@@ -10,72 +10,15 @@ import {
 } from "react-native";
 import HabitCard from "../components/HabitCard";
 import HabitSheet from "../components/HabitSheet";
-
-// Sample initial habits with tracking data
-const initialHabits = [
-  {
-    id: "1",
-    title: "Morning Meditation",
-    streak: 5,
-    completedToday: false,
-    startDate: "2025-12-01",
-    completedDates: [
-      "2026-01-02",
-      "2026-01-03",
-      "2026-01-04",
-      "2026-01-05",
-      "2026-01-06",
-    ],
-  },
-  {
-    id: "2",
-    title: "Exercise 30 min",
-    streak: 12,
-    completedToday: false,
-    startDate: "2025-12-20",
-    completedDates: [
-      "2025-12-26",
-      "2025-12-27",
-      "2025-12-28",
-      "2025-12-29",
-      "2025-12-30",
-      "2025-12-31",
-      "2026-01-01",
-      "2026-01-02",
-      "2026-01-03",
-      "2026-01-04",
-      "2026-01-05",
-      "2026-01-06",
-    ],
-  },
-  {
-    id: "3",
-    title: "Read 20 pages",
-    streak: 3,
-    completedToday: true,
-    startDate: "2026-01-01",
-    completedDates: ["2026-01-05", "2026-01-06", "2026-01-07"],
-  },
-  {
-    id: "4",
-    title: "Drink 8 glasses of water",
-    streak: 7,
-    completedToday: false,
-    startDate: "2025-12-15",
-    completedDates: [
-      "2025-12-31",
-      "2026-01-01",
-      "2026-01-02",
-      "2026-01-03",
-      "2026-01-04",
-      "2026-01-05",
-      "2026-01-06",
-    ],
-  },
-];
+import { useHabitStore } from "../context/habitStore";
 
 export default function Anvil() {
-  const [habits, setHabits] = useState(initialHabits);
+  const habits = useHabitStore((state) => state.habits);
+  const addHabit = useHabitStore((state) => state.addHabit);
+  const deleteHabit = useHabitStore((state) => state.deleteHabit);
+  const toggleHabit = useHabitStore((state) => state.toggleHabit);
+  const toggleDateForHabit = useHabitStore((state) => state.toggleDateForHabit);
+
   const [newHabit, setNewHabit] = useState("");
   const [selectedHabit, setSelectedHabit] = useState(null);
   const [sheetVisible, setSheetVisible] = useState(false);
@@ -91,85 +34,10 @@ export default function Anvil() {
     setSelectedHabit(null);
   };
 
-  // Toggle a specific date for a habit (from calendar)
-  const toggleDateForHabit = (habitId, date) => {
-    setHabits((prev) =>
-      prev.map((habit) => {
-        if (habit.id !== habitId) return habit;
-
-        const isCompleted = habit.completedDates.includes(date);
-        const newCompletedDates = isCompleted
-          ? habit.completedDates.filter((d) => d !== date)
-          : [...habit.completedDates, date];
-
-        // Recalculate streak
-        const today = new Date().toISOString().split("T")[0];
-        const isToday = date === today;
-
-        return {
-          ...habit,
-          completedDates: newCompletedDates,
-          completedToday: isToday ? !isCompleted : habit.completedToday,
-          streak: isToday
-            ? isCompleted
-              ? habit.streak - 1
-              : habit.streak + 1
-            : habit.streak,
-        };
-      })
-    );
-
-    // Update selected habit for the sheet
-    setSelectedHabit((prev) => {
-      if (!prev || prev.id !== habitId) return prev;
-      const isCompleted = prev.completedDates.includes(date);
-      return {
-        ...prev,
-        completedDates: isCompleted
-          ? prev.completedDates.filter((d) => d !== date)
-          : [...prev.completedDates, date],
-      };
-    });
-  };
-
-  const toggleHabit = (id) => {
-    const today = new Date().toISOString().split("T")[0];
-
-    setHabits((prev) =>
-      prev.map((habit) => {
-        if (habit.id !== id) return habit;
-
-        const isCompletedToday = habit.completedDates.includes(today);
-        const newCompletedDates = isCompletedToday
-          ? habit.completedDates.filter((d) => d !== today)
-          : [...habit.completedDates, today];
-
-        return {
-          ...habit,
-          completedToday: !habit.completedToday,
-          completedDates: newCompletedDates,
-          streak: !habit.completedToday ? habit.streak + 1 : habit.streak - 1,
-        };
-      })
-    );
-  };
-
-  const addHabit = () => {
+  const handleAddHabit = () => {
     if (newHabit.trim() === "") return;
-
-    const habit = {
-      id: Date.now().toString(),
-      title: newHabit.trim(),
-      streak: 0,
-      completedToday: false,
-    };
-
-    setHabits((prev) => [...prev, habit]);
+    addHabit(newHabit);
     setNewHabit("");
-  };
-
-  const deleteHabit = (id) => {
-    setHabits((prev) => prev.filter((habit) => habit.id !== id));
   };
 
   const completedCount = habits.filter((h) => h.completedToday).length;
@@ -239,9 +107,9 @@ export default function Anvil() {
           placeholderTextColor="#666"
           value={newHabit}
           onChangeText={setNewHabit}
-          onSubmitEditing={addHabit}
+          onSubmitEditing={handleAddHabit}
         />
-        <Pressable style={styles.addButton} onPress={addHabit}>
+        <Pressable style={styles.addButton} onPress={handleAddHabit}>
           <Text style={styles.addButtonText}>+</Text>
         </Pressable>
       </View>
