@@ -6,6 +6,7 @@ export default function HabitCard({
   onToggle,
   onDelete,
   onExpand,
+  onDateToggle,
   index = 0,
 }) {
   const { id, title, streak, completedToday, completedDates = [] } = habit;
@@ -88,7 +89,11 @@ export default function HabitCard({
           {weekDates.map((day, idx) => {
             const isCompleted = completedDates.includes(day.date);
             return (
-              <View key={idx} style={styles.dayContainer}>
+              <Pressable
+                key={idx}
+                style={styles.dayContainer}
+                onPress={() => onDateToggle && onDateToggle(id, day.date)}
+              >
                 <Text style={styles.dayName}>{day.dayName}</Text>
                 <View
                   style={[
@@ -107,7 +112,7 @@ export default function HabitCard({
                     {day.day}
                   </Text>
                 </View>
-              </View>
+              </Pressable>
             );
           })}
         </View>
@@ -125,7 +130,6 @@ const styles = StyleSheet.create({
   },
   containerCompleted: {
     backgroundColor: "#1A1A1A",
-    opacity: 0.7,
   },
   mainContent: {
     gap: 12,

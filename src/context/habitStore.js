@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { Platform } from "react-native";
+import { calculateStreak } from "./utils";
 
 // Platform-aware storage
 let storage = null;
@@ -55,16 +56,7 @@ export const useHabitStore = create((set, get) => {
   const loadHabitsFromStorage = () => {
     try {
       const stored = storageAdapter.getString("habits");
-      if (!stored) return [];
-      
-      // Parse and hydrate habits - recalculate completedToday based on today's date
-      const habits = JSON.parse(stored);
-      const today = getToday();
-      return habits.map(habit => ({
-        ...habit,
-        completedDates: habit.completedDates || [],
-        completedToday: (habit.completedDates || []).includes(today),
-      }));
+      return stored ? JSON.parse(stored) : [];
     } catch (error) {
       console.error("Error loading habits from storage:", error);
       return [];
@@ -132,11 +124,9 @@ export const useHabitStore = create((set, get) => {
 
           return {
             ...habit,
-            completedToday: newCompletedDates.includes(today),
+            completedToday: !habit.completedToday,
             completedDates: newCompletedDates,
-            streak: isCompletedToday
-              ? Math.max(0, habit.streak - 1)
-              : habit.streak + 1,
+            streak: calculateStreak(newCompletedDates),
           };
         });
         saveHabitsToStorage(updatedHabits);
@@ -164,11 +154,7 @@ export const useHabitStore = create((set, get) => {
             completedToday: isToday
               ? newCompletedDates.includes(today)
               : habit.completedToday,
-            streak: isToday
-              ? isCompleted
-                ? Math.max(0, habit.streak - 1)
-                : habit.streak + 1
-              : habit.streak,
+            streak: calculateStreak(newCompletedDates),
           };
         });
         saveHabitsToStorage(updatedHabits);
@@ -181,18 +167,6 @@ export const useHabitStore = create((set, get) => {
       set(() => {
         storageAdapter.delete("habits");
         return { habits: [] };
-      });
-    },
-
-    // Refresh completedToday for all habits (call when day changes)
-    refreshCompletedToday: () => {
-      set((state) => {
-        const today = getToday();
-        const updatedHabits = state.habits.map((habit) => ({
-          ...habit,
-          completedToday: (habit.completedDates || []).includes(today),
-        }));
-        return { habits: updatedHabits };
       });
     },
   };

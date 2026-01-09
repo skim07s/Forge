@@ -9,6 +9,7 @@ export default function HabitSheet({ visible, habit, onClose, onDateToggle }) {
   const {
     id,
     title,
+    description = "",
     streak = 0,
     startDate = new Date().toISOString(),
     completedDates = [],
@@ -38,6 +39,11 @@ export default function HabitSheet({ visible, habit, onClose, onDateToggle }) {
           <Text style={styles.closeText}>✕</Text>
         </Pressable>
       </View>
+
+      {/* Description */}
+      {description ? (
+        <Text style={styles.description}>{description}</Text>
+      ) : null}
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Stats Row */}
@@ -85,6 +91,13 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     color: "#FFFFFF",
     flex: 1,
+  },
+  description: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    color: "#888",
+    marginBottom: 20,
+    lineHeight: 20,
   },
   closeButton: {
     width: 32,

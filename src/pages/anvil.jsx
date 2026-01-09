@@ -19,7 +19,6 @@ export default function Anvil() {
   const deleteHabit = useHabitStore((state) => state.deleteHabit);
   const toggleHabit = useHabitStore((state) => state.toggleHabit);
   const toggleDateForHabit = useHabitStore((state) => state.toggleDateForHabit);
-  const refreshCompletedToday = useHabitStore((state) => state.refreshCompletedToday);
 
   const [newHabitSheetVisible, setNewHabitSheetVisible] = useState(false);
   const [selectedHabitId, setSelectedHabitId] = useState(null);
@@ -31,20 +30,19 @@ export default function Anvil() {
     ? habits.find((h) => h.id === selectedHabitId)
     : null;
 
-  // Update date when day changes and refresh habit completion status
+  // Update date when day changes
   useEffect(() => {
     const checkDateChange = () => {
       const now = new Date();
       if (now.toDateString() !== currentDate.toDateString()) {
         setCurrentDate(now);
-        refreshCompletedToday(); // Recalculate completedToday for all habits
       }
     };
 
     // Check every minute
     const interval = setInterval(checkDateChange, 60000);
     return () => clearInterval(interval);
-  }, [currentDate, refreshCompletedToday]);
+  }, [currentDate]);
 
   const openHabitSheet = (id) => {
     setSelectedHabitId(id);
@@ -73,6 +71,7 @@ export default function Anvil() {
       onToggle={toggleHabit}
       onDelete={deleteHabit}
       onExpand={openHabitSheet}
+      onDateToggle={toggleDateForHabit}
       index={index}
     />
   );
