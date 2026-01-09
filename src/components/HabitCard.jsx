@@ -129,6 +129,7 @@ export default function HabitCard({
         day: date.getDate(),
         dayName: ["S", "M", "T", "W", "T", "F", "S"][i],
         isToday: dateStr === todayStr,
+        isFuture: dateStr > todayStr,
       });
     }
     return dates;
@@ -182,12 +183,13 @@ export default function HabitCard({
           {weekDates.map((day, idx) => {
             const isCompleted = completedDates.includes(day.date);
             return (
-              <AnimatedDateButton
-                key={day.date}
-                day={day}
-                isCompleted={isCompleted}
-                onPress={() => onDateToggle && onDateToggle(id, day.date)}
-              />
+              <View key={day.date} style={day.isFuture && { opacity: 0.3 }}>
+                <AnimatedDateButton
+                  day={day}
+                  isCompleted={isCompleted}
+                  onPress={() => !day.isFuture && onDateToggle && onDateToggle(id, day.date)}
+                />
+              </View>
             );
           })}
         </View>

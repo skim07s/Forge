@@ -98,6 +98,7 @@ export default function Anvil() {
           </Text>
           <Text style={styles.progressLabel}>Habits Forged</Text>
         </View>
+
         <View style={styles.progressBarContainer}>
           <View
             style={[styles.progressBar, { width: `${progressPercent}%` }]}

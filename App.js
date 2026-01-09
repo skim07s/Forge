@@ -9,7 +9,7 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/inter";
-import Anvil from "./src/pages/anvil";
+import Home from "./src/pages/home";
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -30,7 +30,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <Anvil />
+        <Home />
         <StatusBar style="light" />
       </GestureHandlerRootView>
     </SafeAreaProvider>
