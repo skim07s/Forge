@@ -42,6 +42,7 @@ export default function HabitCard({
         day: date.getDate(),
         dayName: ["S", "M", "T", "W", "T", "F", "S"][i],
         isToday: dateStr === todayStr,
+        isFuture: dateStr > todayStr,
       });
     }
     return dates;
@@ -91,7 +92,11 @@ export default function HabitCard({
             return (
               <Pressable
                 key={idx}
-                style={styles.dayContainer}
+                style={[
+                  styles.dayContainer, 
+                  day.isFuture && { opacity: 0.3 }
+                ]}
+                disabled={day.isFuture}
                 onPress={() => onDateToggle && onDateToggle(id, day.date)}
               >
                 <Text style={styles.dayName}>{day.dayName}</Text>
@@ -113,6 +118,7 @@ export default function HabitCard({
                   </Text>
                 </View>
               </Pressable>
+
             );
           })}
         </View>
