@@ -55,7 +55,16 @@ export const useHabitStore = create((set, get) => {
   const loadHabitsFromStorage = () => {
     try {
       const stored = storageAdapter.getString("habits");
-      return stored ? JSON.parse(stored) : [];
+      if (!stored) return [];
+      
+      // Parse and hydrate habits - recalculate completedToday based on today's date
+      const habits = JSON.parse(stored);
+      const today = getToday();
+      return habits.map(habit => ({
+        ...habit,
+        completedDates: habit.completedDates || [],
+        completedToday: (habit.completedDates || []).includes(today),
+      }));
     } catch (error) {
       console.error("Error loading habits from storage:", error);
       return [];
@@ -75,11 +84,20 @@ export const useHabitStore = create((set, get) => {
     habits: loadHabitsFromStorage(),
 
     // Add a new habit
-    addHabit: (title) => {
+    addHabit: (input) => {
       set((state) => {
+        const payload =
+          typeof input === "string"
+            ? { title: input.trim() }
+            : { ...input, title: (input?.title || "").trim() };
+
+        if (!payload.title) return {};
+
         const newHabit = {
           id: Date.now().toString(),
-          title: title.trim(),
+          title: payload.title,
+          description: payload.description || "",
+          reminderEnabled: !!payload.reminderEnabled,
           streak: 0,
           completedToday: false,
           startDate: getToday(),
@@ -114,11 +132,11 @@ export const useHabitStore = create((set, get) => {
 
           return {
             ...habit,
-            completedToday: !habit.completedToday,
+            completedToday: newCompletedDates.includes(today),
             completedDates: newCompletedDates,
-            streak: !habit.completedToday
-              ? habit.streak + 1
-              : Math.max(0, habit.streak - 1),
+            streak: isCompletedToday
+              ? Math.max(0, habit.streak - 1)
+              : habit.streak + 1,
           };
         });
         saveHabitsToStorage(updatedHabits);
@@ -163,6 +181,18 @@ export const useHabitStore = create((set, get) => {
       set(() => {
         storageAdapter.delete("habits");
         return { habits: [] };
+      });
+    },
+
+    // Refresh completedToday for all habits (call when day changes)
+    refreshCompletedToday: () => {
+      set((state) => {
+        const today = getToday();
+        const updatedHabits = state.habits.map((habit) => ({
+          ...habit,
+          completedToday: (habit.completedDates || []).includes(today),
+        }));
+        return { habits: updatedHabits };
       });
     },
   };

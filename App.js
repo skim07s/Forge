@@ -1,5 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
   useFonts,
   Inter_400Regular,
@@ -26,10 +28,12 @@ export default function App() {
   }
 
   return (
-    <>
-      <Anvil />
-      <StatusBar style="light" />
-    </>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <Anvil />
+        <StatusBar style="light" />
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 

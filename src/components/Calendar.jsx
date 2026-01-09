@@ -1,5 +1,12 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import React, { useState, useRef, useCallback, useMemo } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  FlatList,
+  useWindowDimensions,
+} from "react-native";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -16,6 +23,9 @@ const MONTHS = [
   "November",
   "December",
 ];
+
+// Number of months to show before current month
+const MONTHS_BEFORE = 24;
 
 // Generate calendar days for a specific month
 const generateCalendarDays = (year, month, completedDates = []) => {
@@ -60,6 +70,26 @@ const generateCalendarDays = (year, month, completedDates = []) => {
   return days;
 };
 
+// Get month data for a given index (0 = oldest, MONTHS_BEFORE = current)
+const getMonthData = (index) => {
+  const today = new Date();
+  const date = new Date(
+    today.getFullYear(),
+    today.getMonth() - (MONTHS_BEFORE - index),
+    1
+  );
+  return {
+    year: date.getFullYear(),
+    month: date.getMonth(),
+    key: `${date.getFullYear()}-${date.getMonth()}`,
+  };
+};
+
+// Generate array of month indices
+const generateMonthIndices = () => {
+  return Array.from({ length: MONTHS_BEFORE + 1 }, (_, i) => i);
+};
+
 export default function Calendar({
   completedDates = [],
   onDatePress,
@@ -68,43 +98,28 @@ export default function Calendar({
   habitTitle = "Habit",
   showHeader = true,
 }) {
-  const today = new Date();
-  const [currentYear, setCurrentYear] = useState(today.getFullYear());
-  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
+  const { width: screenWidth } = useWindowDimensions();
+  const calendarWidth = screenWidth - 64; // Account for modal/sheet padding
+  const dayCellWidth = Math.floor(calendarWidth / 7);
 
-  const calendarDays = generateCalendarDays(
-    currentYear,
-    currentMonth,
-    completedDates
+  const today = new Date();
+  const flatListRef = useRef(null);
+  const [currentIndex, setCurrentIndex] = useState(MONTHS_BEFORE);
+
+  const monthIndices = useMemo(() => generateMonthIndices(), []);
+
+  const currentMonthData = useMemo(
+    () => getMonthData(currentIndex),
+    [currentIndex]
+  );
+  const { year: currentYear, month: currentMonth } = currentMonthData;
+
+  // Calculate stats for current visible month
+  const calendarDays = useMemo(
+    () => generateCalendarDays(currentYear, currentMonth, completedDates),
+    [currentYear, currentMonth, completedDates]
   );
 
-  const goToPreviousMonth = () => {
-    if (currentMonth === 0) {
-      setCurrentMonth(11);
-      setCurrentYear(currentYear - 1);
-    } else {
-      setCurrentMonth(currentMonth - 1);
-    }
-  };
-
-  const goToNextMonth = () => {
-    if (currentMonth === 11) {
-      setCurrentMonth(0);
-      setCurrentYear(currentYear + 1);
-    } else {
-      setCurrentMonth(currentMonth + 1);
-    }
-  };
-
-  const goToToday = () => {
-    setCurrentYear(today.getFullYear());
-    setCurrentMonth(today.getMonth());
-  };
-
-  const isCurrentMonthView =
-    currentYear === today.getFullYear() && currentMonth === today.getMonth();
-
-  // Calculate stats for this month
   const monthCompletedCount = calendarDays.filter((d) => d.completed).length;
   const monthTotalDays = calendarDays.filter(
     (d) => d.day !== null && (d.isPast || d.isToday)
@@ -113,6 +128,104 @@ export default function Calendar({
     monthTotalDays > 0
       ? Math.round((monthCompletedCount / monthTotalDays) * 100)
       : 0;
+
+  const isCurrentMonthView = currentIndex === MONTHS_BEFORE;
+
+  const goToPreviousMonth = useCallback(() => {
+    if (currentIndex > 0) {
+      const newIndex = currentIndex - 1;
+      flatListRef.current?.scrollToIndex({ index: newIndex, animated: true });
+    }
+  }, [currentIndex]);
+
+  const goToNextMonth = useCallback(() => {
+    if (currentIndex < MONTHS_BEFORE) {
+      const newIndex = currentIndex + 1;
+      flatListRef.current?.scrollToIndex({ index: newIndex, animated: true });
+    }
+  }, [currentIndex]);
+
+  const goToToday = useCallback(() => {
+    flatListRef.current?.scrollToIndex({
+      index: MONTHS_BEFORE,
+      animated: true,
+    });
+  }, []);
+
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    if (viewableItems.length > 0) {
+      setCurrentIndex(viewableItems[0].index);
+    }
+  }).current;
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50,
+  }).current;
+
+  const gridWidth = dayCellWidth * 7;
+
+  const renderMonthPage = useCallback(
+    ({ item: index }) => {
+      const { year, month } = getMonthData(index);
+      const days = generateCalendarDays(year, month, completedDates);
+
+      return (
+        <View style={[styles.monthPage, { width: gridWidth }]}>
+          {/* Calendar Grid */}
+          <View style={[styles.calendarGrid, { width: gridWidth }]}>
+            {days.map((dayItem) => (
+              <Pressable
+                key={dayItem.key}
+                style={[
+                  styles.dayCell,
+                  { width: dayCellWidth, height: dayCellWidth },
+                ]}
+                onPress={() =>
+                  dayItem.day && onDatePress && onDatePress(dayItem.date)
+                }
+                disabled={!dayItem.day || dayItem.isFuture}
+              >
+                {dayItem.day !== null && (
+                  <View
+                    style={[
+                      styles.dayCircle,
+                      dayItem.isFuture && styles.dayFuture,
+                      dayItem.isToday && !dayItem.completed && styles.dayToday,
+                      dayItem.completed && styles.dayCompleted,
+                      selectedDate === dayItem.date && styles.daySelected,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.dayText,
+                        dayItem.isToday &&
+                          !dayItem.completed &&
+                          styles.dayTextToday,
+                        dayItem.completed && styles.dayTextCompleted,
+                        dayItem.isFuture && styles.dayTextFuture,
+                      ]}
+                    >
+                      {dayItem.day}
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      );
+    },
+    [completedDates, onDatePress, selectedDate, dayCellWidth, gridWidth]
+  );
+
+  const getItemLayout = useCallback(
+    (_, index) => ({
+      length: gridWidth,
+      offset: gridWidth * index,
+      index,
+    }),
+    [gridWidth]
+  );
 
   return (
     <View style={styles.container}>
@@ -128,8 +241,22 @@ export default function Calendar({
 
       {/* Month Navigation */}
       <View style={styles.monthNav}>
-        <Pressable style={styles.navButton} onPress={goToPreviousMonth}>
-          <Text style={styles.navButtonText}>‹</Text>
+        <Pressable
+          style={[
+            styles.navButton,
+            currentIndex === 0 && styles.navButtonDisabled,
+          ]}
+          onPress={goToPreviousMonth}
+          disabled={currentIndex === 0}
+        >
+          <Text
+            style={[
+              styles.navButtonText,
+              currentIndex === 0 && styles.navButtonTextDisabled,
+            ]}
+          >
+            ‹
+          </Text>
         </Pressable>
 
         <Pressable onPress={goToToday}>
@@ -138,8 +265,22 @@ export default function Calendar({
           </Text>
         </Pressable>
 
-        <Pressable style={styles.navButton} onPress={goToNextMonth}>
-          <Text style={styles.navButtonText}>›</Text>
+        <Pressable
+          style={[
+            styles.navButton,
+            isCurrentMonthView && styles.navButtonDisabled,
+          ]}
+          onPress={goToNextMonth}
+          disabled={isCurrentMonthView}
+        >
+          <Text
+            style={[
+              styles.navButtonText,
+              isCurrentMonthView && styles.navButtonTextDisabled,
+            ]}
+          >
+            ›
+          </Text>
         </Pressable>
       </View>
 
@@ -151,48 +292,33 @@ export default function Calendar({
       </View>
 
       {/* Weekday Headers */}
-      <View style={styles.weekdayRow}>
+      <View style={[styles.weekdayRow, { width: gridWidth }]}>
         {WEEKDAYS.map((day) => (
-          <Text key={day} style={styles.weekdayText}>
+          <Text key={day} style={[styles.weekdayText, { width: dayCellWidth }]}>
             {day}
           </Text>
         ))}
       </View>
 
-      {/* Calendar Grid */}
-      <View style={styles.calendarGrid}>
-        {calendarDays.map((item) => (
-          <Pressable
-            key={item.key}
-            style={styles.dayCell}
-            onPress={() => item.day && onDatePress && onDatePress(item.date)}
-            disabled={!item.day || item.isFuture}
-          >
-            {item.day !== null && (
-              <View
-                style={[
-                  styles.dayCircle,
-                  item.isFuture && styles.dayFuture,
-                  item.isToday && !item.completed && styles.dayToday,
-                  item.completed && styles.dayCompleted,
-                  selectedDate === item.date && styles.daySelected,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.dayText,
-                    item.isToday && !item.completed && styles.dayTextToday,
-                    item.completed && styles.dayTextCompleted,
-                    item.isFuture && styles.dayTextFuture,
-                  ]}
-                >
-                  {item.day}
-                </Text>
-              </View>
-            )}
-          </Pressable>
-        ))}
-      </View>
+      {/* Swipeable Calendar Pages */}
+      <FlatList
+        ref={flatListRef}
+        data={monthIndices}
+        renderItem={renderMonthPage}
+        keyExtractor={(item) => item.toString()}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        initialScrollIndex={MONTHS_BEFORE}
+        getItemLayout={getItemLayout}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        decelerationRate="fast"
+        snapToInterval={gridWidth}
+        snapToAlignment="start"
+        extraData={completedDates}
+        style={{ width: gridWidth }}
+      />
 
       {/* Legend */}
       <View style={styles.legend}>
@@ -225,6 +351,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#1A1A1A",
     borderRadius: 16,
     padding: 16,
+    overflow: "hidden",
   },
   header: {
     flexDirection: "row",
@@ -262,10 +389,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  navButtonDisabled: {
+    opacity: 0.3,
+  },
   navButtonText: {
     fontSize: 24,
     color: "#FFFFFF",
     marginTop: -2,
+  },
+  navButtonTextDisabled: {
+    color: "#666",
   },
   monthTitle: {
     fontSize: 18,
@@ -292,13 +425,15 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     color: "#666",
   },
+  monthPage: {
+    // Width is set dynamically
+  },
   calendarGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
   },
   dayCell: {
-    width: "14.28%",
-    aspectRatio: 1,
+    // Width and height set dynamically
     padding: 2,
     justifyContent: "center",
     alignItems: "center",

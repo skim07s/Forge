@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,10 +6,11 @@ import {
   FlatList,
   TextInput,
   Pressable,
-  SafeAreaView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import HabitCard from "../components/HabitCard";
 import HabitSheet from "../components/HabitSheet";
+import NewHabitSheet from "../components/NewHabitSheet";
 import { useHabitStore } from "../context/habitStore";
 
 export default function Anvil() {
@@ -18,26 +19,47 @@ export default function Anvil() {
   const deleteHabit = useHabitStore((state) => state.deleteHabit);
   const toggleHabit = useHabitStore((state) => state.toggleHabit);
   const toggleDateForHabit = useHabitStore((state) => state.toggleDateForHabit);
+  const refreshCompletedToday = useHabitStore((state) => state.refreshCompletedToday);
 
-  const [newHabit, setNewHabit] = useState("");
-  const [selectedHabit, setSelectedHabit] = useState(null);
+  const [newHabitSheetVisible, setNewHabitSheetVisible] = useState(false);
+  const [selectedHabitId, setSelectedHabitId] = useState(null);
   const [sheetVisible, setSheetVisible] = useState(false);
+  const [currentDate, setCurrentDate] = useState(new Date());
+
+  // Get selected habit from store (stays in sync with updates)
+  const selectedHabit = selectedHabitId
+    ? habits.find((h) => h.id === selectedHabitId)
+    : null;
+
+  // Update date when day changes and refresh habit completion status
+  useEffect(() => {
+    const checkDateChange = () => {
+      const now = new Date();
+      if (now.toDateString() !== currentDate.toDateString()) {
+        setCurrentDate(now);
+        refreshCompletedToday(); // Recalculate completedToday for all habits
+      }
+    };
+
+    // Check every minute
+    const interval = setInterval(checkDateChange, 60000);
+    return () => clearInterval(interval);
+  }, [currentDate, refreshCompletedToday]);
 
   const openHabitSheet = (id) => {
-    const habit = habits.find((h) => h.id === id);
-    setSelectedHabit(habit);
+    setSelectedHabitId(id);
     setSheetVisible(true);
   };
 
   const closeHabitSheet = () => {
     setSheetVisible(false);
-    setSelectedHabit(null);
+    setSelectedHabitId(null);
   };
 
-  const handleAddHabit = () => {
-    if (newHabit.trim() === "") return;
-    addHabit(newHabit);
-    setNewHabit("");
+  const handleCreateHabit = (payload) => {
+    // payload: { title, description, reminderEnabled }
+    addHabit(payload);
+    setNewHabitSheetVisible(false);
   };
 
   const completedCount = habits.filter((h) => h.completedToday).length;
@@ -45,12 +67,13 @@ export default function Anvil() {
   const progressPercent =
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-  const renderHabit = ({ item }) => (
+  const renderHabit = ({ item, index }) => (
     <HabitCard
       habit={item}
       onToggle={toggleHabit}
       onDelete={deleteHabit}
       onExpand={openHabitSheet}
+      index={index}
     />
   );
 
@@ -60,7 +83,7 @@ export default function Anvil() {
       <View style={styles.header}>
         <Text style={styles.title}>⚒️ The Anvil</Text>
         <Text style={styles.date}>
-          {new Date().toLocaleDateString("en-US", {
+          {currentDate.toLocaleDateString("en-US", {
             weekday: "long",
             month: "long",
             day: "numeric",
@@ -99,20 +122,14 @@ export default function Anvil() {
         }
       />
 
-      {/* Add Habit Input */}
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Add a new habit..."
-          placeholderTextColor="#666"
-          value={newHabit}
-          onChangeText={setNewHabit}
-          onSubmitEditing={handleAddHabit}
-        />
-        <Pressable style={styles.addButton} onPress={handleAddHabit}>
-          <Text style={styles.addButtonText}>+</Text>
-        </Pressable>
-      </View>
+      {/* Floating Add Button */}
+      <Pressable
+        style={styles.addButton}
+        onPress={() => setNewHabitSheetVisible(true)}
+        accessibilityLabel="Add new habit"
+      >
+        <Text style={styles.addButtonText}>+</Text>
+      </Pressable>
 
       {/* Habit Detail Sheet */}
       <HabitSheet
@@ -120,6 +137,13 @@ export default function Anvil() {
         habit={selectedHabit}
         onClose={closeHabitSheet}
         onDateToggle={toggleDateForHabit}
+      />
+
+      {/* New Habit Sheet */}
+      <NewHabitSheet
+        visible={newHabitSheetVisible}
+        onClose={() => setNewHabitSheetVisible(false)}
+        onCreate={handleCreateHabit}
       />
     </SafeAreaView>
   );
@@ -202,28 +226,25 @@ const styles = StyleSheet.create({
     color: "#666",
     fontSize: 16,
   },
-  inputContainer: {
-    flexDirection: "row",
-    padding: 24,
-    paddingBottom: 32,
-    gap: 12,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "#1A1A1A",
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    fontFamily: "Inter_400Regular",
-    color: "#FFFFFF",
-  },
+  // removed search/input bar styles
   addButton: {
+    position: "absolute",
+    bottom: 32,
+    right: 24,
     width: 56,
     height: 56,
     borderRadius: 12,
     backgroundColor: "#FF6B35",
     justifyContent: "center",
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
   },
   addButtonText: {
     fontSize: 28,

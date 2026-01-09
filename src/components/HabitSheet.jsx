@@ -1,13 +1,7 @@
 import React from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  ScrollView,
-  Modal,
-} from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import Calendar from "./Calendar";
+import BottomSheet from "./BottomSheet";
 
 export default function HabitSheet({ visible, habit, onClose, onDateToggle }) {
   if (!habit) return null;
@@ -36,84 +30,50 @@ export default function HabitSheet({ visible, habit, onClose, onDateToggle }) {
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={onClose}
-    >
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
-          {/* Handle */}
-          <View style={styles.handle} />
-
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>{title}</Text>
-            <Pressable onPress={onClose} style={styles.closeButton}>
-              <Text style={styles.closeText}>✕</Text>
-            </Pressable>
-          </View>
-
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Stats Row */}
-            <View style={styles.statsRow}>
-              <View style={styles.statCard}>
-                <Text style={styles.statNumber}>🔥 {streak}</Text>
-                <Text style={styles.statLabel}>Current Streak</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statNumber}>✓ {totalCompleted}</Text>
-                <Text style={styles.statLabel}>Total Completions</Text>
-              </View>
-            </View>
-
-            {/* Start Date */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Started</Text>
-              <Text style={styles.startDate}>{startDateFormatted}</Text>
-            </View>
-
-            {/* Dynamic Calendar Component */}
-            <View style={styles.section}>
-              <Calendar
-                completedDates={completedDates}
-                streakCount={streak}
-                habitTitle={title}
-                onDatePress={handleDatePress}
-                showHeader={false}
-              />
-            </View>
-          </ScrollView>
-        </View>
+    <BottomSheet visible={visible} onClose={onClose} maxHeight={0.85}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.title}>{title}</Text>
+        <Pressable onPress={onClose} style={styles.closeButton}>
+          <Text style={styles.closeText}>✕</Text>
+        </Pressable>
       </View>
-    </Modal>
+
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Stats Row */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>🔥 {streak}</Text>
+            <Text style={styles.statLabel}>Current Streak</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>✓ {totalCompleted}</Text>
+            <Text style={styles.statLabel}>Total Completions</Text>
+          </View>
+        </View>
+
+        {/* Start Date */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Started</Text>
+          <Text style={styles.startDate}>{startDateFormatted}</Text>
+        </View>
+
+        {/* Dynamic Calendar Component */}
+        <View style={styles.section}>
+          <Calendar
+            completedDates={completedDates}
+            streakCount={streak}
+            habitTitle={title}
+            onDatePress={handleDatePress}
+            showHeader={false}
+          />
+        </View>
+      </ScrollView>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    backgroundColor: "#1A1A1A",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    maxHeight: "85%",
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    backgroundColor: "#444",
-    borderRadius: 2,
-    alignSelf: "center",
-    marginTop: 12,
-    marginBottom: 20,
-  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
