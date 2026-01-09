@@ -1,5 +1,72 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  interpolateColor,
+} from "react-native-reanimated";
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+// Animated date button with spring pop effect
+function AnimatedDateButton({ day, isCompleted, onPress }) {
+  const scale = useSharedValue(1);
+  const colorProgress = useSharedValue(isCompleted ? 1 : 0);
+
+  // Update color when isCompleted changes
+  useEffect(() => {
+    colorProgress.value = withSpring(isCompleted ? 1 : 0, {
+      damping: 15,
+      stiffness: 150,
+    });
+  }, [isCompleted]);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: scale.value }],
+      backgroundColor: interpolateColor(
+        colorProgress.value,
+        [0, 1],
+        ["#252525", "#FFB800"]
+      ),
+    };
+  });
+
+  const handlePressIn = () => {
+    scale.value = withSpring(0.9, { damping: 20, stiffness: 600 });
+  };
+
+  const handlePressOut = () => {
+    scale.value = withSpring(1, { damping: 12, stiffness: 500 });
+  };
+
+  return (
+    <View style={styles.dayContainer}>
+      <Text style={styles.dayName}>{day.dayName}</Text>
+      <AnimatedPressable
+        style={[
+          styles.dayCircle,
+          day.isToday && styles.dayToday,
+          animatedStyle,
+        ]}
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+      >
+        <Text
+          style={[
+            styles.dayNumber,
+            isCompleted && styles.dayNumberCompleted,
+            day.isToday && !isCompleted && styles.dayNumberToday,
+          ]}
+        >
+          {day.day}
+        </Text>
+      </AnimatedPressable>
+    </View>
+  );
+}
 
 export default function HabitCard({
   habit,
@@ -11,6 +78,9 @@ export default function HabitCard({
 }) {
   const { id, title, streak, completedToday, completedDates = [] } = habit;
   const [currentDate, setCurrentDate] = useState(new Date());
+  
+  // Checkbox animation
+  const checkboxScale = useSharedValue(1);
 
   // Update date when day changes
   useEffect(() => {
@@ -25,6 +95,23 @@ export default function HabitCard({
     const interval = setInterval(checkDateChange, 60000);
     return () => clearInterval(interval);
   }, [currentDate]);
+
+  // Animate checkbox when completedToday changes
+  useEffect(() => {
+    checkboxScale.value = withSpring(1.15, {
+      damping: 15,
+      stiffness: 500,
+    }, () => {
+      checkboxScale.value = withSpring(1, {
+        damping: 12,
+        stiffness: 400,
+      });
+    });
+  }, [completedToday]);
+
+  const checkboxAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: checkboxScale.value }],
+  }));
 
   // Get current week dates
   const getWeekDates = () => {
@@ -65,12 +152,18 @@ export default function HabitCard({
     >
       <View style={styles.mainContent}>
         <Pressable style={styles.content} onLongPress={() => onDelete(id)}>
-          <Pressable
-            style={[styles.checkbox, completedToday && styles.checkboxChecked]}
-            onPress={handleCheckboxPress}
-          >
-            {completedToday && <Text style={styles.checkmark}>✓</Text>}
-          </Pressable>
+          <View style={styles.checkboxWrapper}>
+            <AnimatedPressable
+              style={[
+                styles.checkbox,
+                completedToday && styles.checkboxChecked,
+                checkboxAnimatedStyle,
+              ]}
+              onPress={handleCheckboxPress}
+            >
+              {completedToday && <Text style={styles.checkmark}>✓</Text>}
+            </AnimatedPressable>
+          </View>
           <View style={styles.textContainer}>
             <Text
               style={[styles.title, completedToday && styles.titleCompleted]}
@@ -89,30 +182,12 @@ export default function HabitCard({
           {weekDates.map((day, idx) => {
             const isCompleted = completedDates.includes(day.date);
             return (
-              <Pressable
-                key={idx}
-                style={styles.dayContainer}
+              <AnimatedDateButton
+                key={day.date}
+                day={day}
+                isCompleted={isCompleted}
                 onPress={() => onDateToggle && onDateToggle(id, day.date)}
-              >
-                <Text style={styles.dayName}>{day.dayName}</Text>
-                <View
-                  style={[
-                    styles.dayCircle,
-                    isCompleted && styles.dayCompleted,
-                    day.isToday && styles.dayToday,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.dayNumber,
-                      isCompleted && styles.dayNumberCompleted,
-                      day.isToday && !isCompleted && styles.dayNumberToday,
-                    ]}
-                  >
-                    {day.day}
-                  </Text>
-                </View>
-              </Pressable>
+              />
             );
           })}
         </View>
@@ -138,6 +213,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+  },
+  checkboxWrapper: {
+    width: 28,
+    height: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
   },
   checkbox: {
     width: 28,
