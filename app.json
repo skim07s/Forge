@@ -4,9 +4,11 @@
     "slug": "Forge",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "icon": "./src/assets/Logo.png",
     "newArchEnabled": true,
     "splash": {
+      "image": "./src/assets/Logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#0D0D0D"
     },
@@ -15,6 +17,7 @@
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./src/assets/Logo.png",
         "backgroundColor": "#0D0D0D"
       },
       "edgeToEdgeEnabled": true,

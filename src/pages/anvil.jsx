@@ -80,7 +80,7 @@ export default function Anvil() {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>⚒️ The Anvil</Text>
+        <Text style={styles.title}>The Anvil</Text>
         <Text style={styles.date}>
           {currentDate.toLocaleDateString("en-US", {
             weekday: "long",

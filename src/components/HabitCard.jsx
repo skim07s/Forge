@@ -3,68 +3,44 @@ import { View, Text, StyleSheet, Pressable } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  withTiming,
   withSpring,
-  interpolateColor,
+  withSequence,
 } from "react-native-reanimated";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-// Animated date button with spring pop effect
-function AnimatedDateButton({ day, isCompleted, onPress }) {
+// Animated Button Component with bounce effect
+function AnimatedButton({ style, onPress, children, disabled }) {
   const scale = useSharedValue(1);
-  const colorProgress = useSharedValue(isCompleted ? 1 : 0);
 
-  // Update color when isCompleted changes
-  useEffect(() => {
-    colorProgress.value = withSpring(isCompleted ? 1 : 0, {
-      damping: 15,
-      stiffness: 150,
-    });
-  }, [isCompleted]);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: scale.value }],
-      backgroundColor: interpolateColor(
-        colorProgress.value,
-        [0, 1],
-        ["#252525", "#FFB800"]
-      ),
-    };
-  });
-
-  const handlePressIn = () => {
-    scale.value = withSpring(0.9, { damping: 20, stiffness: 600 });
+  const triggerAnimation = () => {
+    // Scale in all directions - shorter, subtler bounce
+    scale.value = withSequence(
+      withTiming(1.1, { duration: 80 }),
+      withSpring(1, { mass: 1.1, damping: 14, stiffness: 85 })
+    );
   };
 
-  const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 12, stiffness: 500 });
+  const handlePress = () => {
+    if (!disabled) {
+      triggerAnimation();
+      onPress && onPress();
+    }
   };
 
   return (
-    <View style={styles.dayContainer}>
-      <Text style={styles.dayName}>{day.dayName}</Text>
-      <AnimatedPressable
-        style={[
-          styles.dayCircle,
-          day.isToday && styles.dayToday,
-          animatedStyle,
-        ]}
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-      >
-        <Text
-          style={[
-            styles.dayNumber,
-            isCompleted && styles.dayNumberCompleted,
-            day.isToday && !isCompleted && styles.dayNumberToday,
-          ]}
-        >
-          {day.day}
-        </Text>
-      </AnimatedPressable>
-    </View>
+    <AnimatedPressable
+      style={[style, animatedStyle]}
+      onPress={handlePress}
+      disabled={disabled}
+    >
+      {children}
+    </AnimatedPressable>
   );
 }
 
@@ -78,9 +54,6 @@ export default function HabitCard({
 }) {
   const { id, title, streak, completedToday, completedDates = [] } = habit;
   const [currentDate, setCurrentDate] = useState(new Date());
-  
-  // Checkbox animation
-  const checkboxScale = useSharedValue(1);
 
   // Update date when day changes
   useEffect(() => {
@@ -91,27 +64,9 @@ export default function HabitCard({
       }
     };
 
-    // Check every minute
     const interval = setInterval(checkDateChange, 60000);
     return () => clearInterval(interval);
   }, [currentDate]);
-
-  // Animate checkbox when completedToday changes
-  useEffect(() => {
-    checkboxScale.value = withSpring(1.15, {
-      damping: 15,
-      stiffness: 500,
-    }, () => {
-      checkboxScale.value = withSpring(1, {
-        damping: 12,
-        stiffness: 400,
-      });
-    });
-  }, [completedToday]);
-
-  const checkboxAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: checkboxScale.value }],
-  }));
 
   // Get current week dates
   const getWeekDates = () => {
@@ -137,34 +92,23 @@ export default function HabitCard({
 
   const weekDates = getWeekDates();
 
-  const handleCheckboxPress = () => {
-    onToggle(id);
-  };
-
-  const handleExpandPress = () => {
-    if (onExpand) {
-      onExpand(id);
-    }
-  };
-
   return (
     <View
       style={[styles.container, completedToday && styles.containerCompleted]}
     >
       <View style={styles.mainContent}>
         <Pressable style={styles.content} onLongPress={() => onDelete(id)}>
-          <View style={styles.checkboxWrapper}>
-            <AnimatedPressable
-              style={[
-                styles.checkbox,
-                completedToday && styles.checkboxChecked,
-                checkboxAnimatedStyle,
-              ]}
-              onPress={handleCheckboxPress}
-            >
-              {completedToday && <Text style={styles.checkmark}>✓</Text>}
-            </AnimatedPressable>
-          </View>
+          {/* Checkbox with bounce animation */}
+          <AnimatedButton
+            style={[
+              styles.checkbox,
+              completedToday && styles.checkboxChecked,
+            ]}
+            onPress={() => onToggle(id)}
+          >
+            {completedToday && <Text style={styles.checkmark}>✓</Text>}
+          </AnimatedButton>
+
           <View style={styles.textContainer}>
             <Text
               style={[styles.title, completedToday && styles.titleCompleted]}
@@ -173,22 +117,46 @@ export default function HabitCard({
             </Text>
             <Text style={styles.streak}>🔥 {streak} day streak</Text>
           </View>
-          <Pressable style={styles.expandButton} onPress={handleExpandPress}>
+
+          {/* Expand button with bounce animation */}
+          <AnimatedButton
+            style={styles.expandButton}
+            onPress={() => onExpand && onExpand(id)}
+          >
             <Text style={styles.expandIcon}>⌄</Text>
-          </Pressable>
+          </AnimatedButton>
         </Pressable>
 
         {/* Week Calendar */}
         <View style={styles.weekCalendar}>
-          {weekDates.map((day, idx) => {
+          {weekDates.map((day) => {
             const isCompleted = completedDates.includes(day.date);
             return (
-              <View key={day.date} style={day.isFuture && { opacity: 0.3 }}>
-                <AnimatedDateButton
-                  day={day}
-                  isCompleted={isCompleted}
-                  onPress={() => !day.isFuture && onDateToggle && onDateToggle(id, day.date)}
-                />
+              <View
+                key={day.date}
+                style={[styles.dayContainer, day.isFuture && { opacity: 0.3 }]}
+              >
+                <Text style={styles.dayName}>{day.dayName}</Text>
+                {/* Date button with bounce animation */}
+                <AnimatedButton
+                  style={[
+                    styles.dayCircle,
+                    isCompleted && styles.dayCompleted,
+                    day.isToday && styles.dayToday,
+                  ]}
+                  onPress={() => onDateToggle && onDateToggle(id, day.date)}
+                  disabled={day.isFuture}
+                >
+                  <Text
+                    style={[
+                      styles.dayNumber,
+                      isCompleted && styles.dayNumberCompleted,
+                      day.isToday && !isCompleted && styles.dayNumberToday,
+                    ]}
+                  >
+                    {day.day}
+                  </Text>
+                </AnimatedButton>
               </View>
             );
           })}
@@ -215,13 +183,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-  },
-  checkboxWrapper: {
-    width: 28,
-    height: 28,
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
   },
   checkbox: {
     width: 28,

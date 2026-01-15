@@ -24,8 +24,8 @@ const MONTHS = [
   "December",
 ];
 
-// Number of months to show before current month
-const MONTHS_BEFORE = 24;
+// Number of months to show before current month (reduced for performance)
+const MONTHS_BEFORE = 6;
 
 // Generate calendar days for a specific month
 const generateCalendarDays = (year, month, completedDates = []) => {
@@ -318,6 +318,9 @@ export default function Calendar({
         snapToAlignment="start"
         extraData={completedDates}
         style={{ width: gridWidth }}
+        windowSize={3}
+        maxToRenderPerBatch={2}
+        initialNumToRender={1}
       />
 
       {/* Legend */}

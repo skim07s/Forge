@@ -1,7 +1,9 @@
 import { StatusBar } from "expo-status-bar";
-import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
+import { View, Text, ActivityIndicator, StyleSheet, Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import * as NavigationBar from "expo-navigation-bar";
+import { useEffect } from "react";
 import {
   useFonts,
   Inter_400Regular,
@@ -18,6 +20,14 @@ export default function App() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+
+  // Make Android gesture bar transparent
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      NavigationBar.setBackgroundColorAsync("transparent");
+      NavigationBar.setPositionAsync("absolute");
+    }
+  }, []);
 
   if (!fontsLoaded) {
     return (

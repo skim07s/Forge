@@ -20,7 +20,7 @@ export default function IngotList() {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.title}>📜 Ingot List</Text>
+                <Text style={styles.title}>Ingot List</Text>
             </View>
 
             <FlatList
