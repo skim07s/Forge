@@ -64,56 +64,61 @@ export const useHabitStore = create(
         set((state) => ({ habits: [...state.habits, newHabit] }));
       },
 
-      // Delete a habit
+      // Delete a habit by ID
       deleteHabit: (id) => {
         set((state) => ({
-          habits: state.habits.filter((habit) => habit.id !== id),
+          habits: state.habits.filter((h) => h.id !== id),
         }));
       },
 
-      // Toggle habit completion for today
+      // Toggle today's completion for a habit
       toggleHabit: (id) => {
         const today = getToday();
+
         set((state) => ({
           habits: state.habits.map((habit) => {
             if (habit.id !== id) return habit;
 
-            const isCompletedToday = (habit.completedDates || []).includes(today);
-            const newCompletedDates = isCompletedToday
-              ? (habit.completedDates || []).filter((d) => d !== today)
-              : [...(habit.completedDates || []), today];
+            const wasCompletedToday = habit.completedDates?.includes(today);
+            let newDates;
+
+            if (wasCompletedToday) {
+              newDates = habit.completedDates.filter((d) => d !== today);
+            } else {
+              newDates = [...(habit.completedDates || []), today];
+            }
 
             return {
               ...habit,
-              completedToday: !isCompletedToday,
-              completedDates: newCompletedDates,
-              streak: calculateStreak(newCompletedDates),
+              completedDates: newDates,
+              completedToday: !wasCompletedToday,
+              streak: calculateStreak(newDates),
             };
           }),
         }));
       },
 
-      // Toggle completion for a specific date (retroactive tracking)
-      toggleDateForHabit: (habitId, date) => {
-        const today = getToday();
+      // Toggle completion for a specific date
+      toggleDateForHabit: (id, dateStr) => {
         set((state) => ({
           habits: state.habits.map((habit) => {
-            if (habit.id !== habitId) return habit;
+            if (habit.id !== id) return habit;
 
-            const isCompleted = (habit.completedDates || []).includes(date);
-            const newCompletedDates = isCompleted
-              ? (habit.completedDates || []).filter((d) => d !== date)
-              : [...(habit.completedDates || []), date];
+            const wasCompleted = habit.completedDates?.includes(dateStr);
+            let newDates;
 
-            const isToday = date === today;
+            if (wasCompleted) {
+              newDates = habit.completedDates.filter((d) => d !== dateStr);
+            } else {
+              newDates = [...(habit.completedDates || []), dateStr];
+            }
 
+            const today = getToday();
             return {
               ...habit,
-              completedDates: newCompletedDates,
-              completedToday: isToday
-                ? newCompletedDates.includes(today)
-                : habit.completedToday,
-              streak: calculateStreak(newCompletedDates),
+              completedDates: newDates,
+              completedToday: newDates.includes(today),
+              streak: calculateStreak(newDates),
             };
           }),
         }));
