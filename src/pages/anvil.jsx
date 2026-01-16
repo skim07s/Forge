@@ -114,7 +114,7 @@ export default function Anvil() {
         renderItem={renderHabit}
         keyExtractor={(item) => item.id}
         style={styles.list}
-        contentContainerStyle={[styles.listContent, { paddingBottom: 100 + insets.bottom }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 80 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -125,7 +125,7 @@ export default function Anvil() {
 
       {/* Floating Add Button */}
       <Pressable
-        style={[styles.addButton, { bottom: 100 + insets.bottom }]}
+        style={[styles.addButton, { bottom: 16 + insets.bottom }]}
         onPress={() => setNewHabitSheetVisible(true)}
         accessibilityLabel="Add new habit"
       >

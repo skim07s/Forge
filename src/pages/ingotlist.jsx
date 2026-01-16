@@ -34,7 +34,7 @@ export default function IngotList() {
                         onDelete={deleteIngot} 
                     />
                 )}
-                contentContainerStyle={[styles.listContent, { paddingBottom: 100 + insets.bottom }]}
+                contentContainerStyle={[styles.listContent, { paddingBottom: 80 + insets.bottom }]}
                 ListEmptyComponent={
                     <View style={styles.empty}>
                         <Text style={styles.emptyText}>No tasks yet. Temper your steel!</Text>
@@ -43,7 +43,7 @@ export default function IngotList() {
             />
 
             <Pressable 
-                style={[styles.addButton, { bottom: 100 + insets.bottom }]}
+                style={[styles.addButton, { bottom: 16 + insets.bottom }]}
                 onPress={() => setIsSheetVisible(true)}
             >
                 <Text style={styles.addButtonText}>+</Text>

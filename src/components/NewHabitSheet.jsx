@@ -12,6 +12,7 @@ import {
   Platform,
   Keyboard,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -31,6 +32,7 @@ export default function NewHabitSheet({ visible, onClose, onCreate }) {
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const overlayOpacity = useSharedValue(0);
   const translateY = useSharedValue(500);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (visible) {
@@ -138,7 +140,7 @@ export default function NewHabitSheet({ visible, onClose, onCreate }) {
           </ScrollView>
 
           {/* Footer - Always visible above keyboard */}
-          <View style={styles.footer}>
+          <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
             <Pressable style={[styles.button, styles.cancel]} onPress={handleClose}>
               <Text style={styles.buttonText}>Cancel</Text>
             </Pressable>
@@ -256,7 +258,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     paddingTop: 8,
-    paddingBottom: 32,
+    paddingBottom: 16,
   },
   button: {
     flex: 1,

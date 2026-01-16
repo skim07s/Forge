@@ -10,6 +10,7 @@ import {
   Platform,
   Keyboard,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -27,6 +28,7 @@ export default function NewIngotSheet({ visible, onClose, onCreate }) {
   const [title, setTitle] = useState("");
   const overlayOpacity = useSharedValue(0);
   const translateY = useSharedValue(500);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (visible) {
@@ -106,7 +108,7 @@ export default function NewIngotSheet({ visible, onClose, onCreate }) {
 
           {/* Footer - Always visible above keyboard */}
           <Pressable
-            style={[styles.createButton, !title.trim() && styles.disabledButton]}
+            style={[styles.createButton, !title.trim() && styles.disabledButton, { marginBottom: insets.bottom + 16 }]}
             onPress={handleCreate}
             disabled={!title.trim()}
           >
@@ -186,7 +188,7 @@ const styles = StyleSheet.create({
     height: 50,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 16,
   },
   disabledButton: {
     backgroundColor: '#333',

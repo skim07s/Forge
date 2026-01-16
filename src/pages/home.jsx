@@ -18,7 +18,7 @@ export default function Home() {
             {/* Bottom Navigation Bar */}
             <View style={[
                 styles.bottomBar, 
-                { paddingBottom: insets.bottom + 24 }
+                { paddingBottom: insets.bottom }
             ]}>
                 <Pressable 
                     style={styles.tab} 
