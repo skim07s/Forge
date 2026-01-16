@@ -7,6 +7,8 @@ import {
   Modal,
   Keyboard,
   Platform,
+  ScrollView,
+  KeyboardAvoidingView,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -40,7 +42,7 @@ export default function BottomSheet({
   const context = useSharedValue({ y: 0 });
   
   // Track keyboard state
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   // Keyboard listeners
   useEffect(() => {
@@ -48,16 +50,16 @@ export default function BottomSheet({
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
         const height = e.endCoordinates.height;
-        setKeyboardHeight(height);
-        // Animate sheet up with spring
-        keyboardOffset.value = withSpring(-height + 40, SPRING_CONFIG);
+        setKeyboardVisible(true);
+        // Animate sheet up with spring - use full height minus some padding
+        keyboardOffset.value = withSpring(-height + 20, SPRING_CONFIG);
       }
     );
 
     const hideSubscription = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
-        setKeyboardHeight(0);
+        setKeyboardVisible(false);
         // Animate sheet back down with spring
         keyboardOffset.value = withSpring(0, SPRING_CONFIG);
       }
@@ -144,7 +146,11 @@ export default function BottomSheet({
 
   return (
     <Modal transparent visible={visible} animationType="none">
-      <View style={styles.modalContainer}>
+      <KeyboardAvoidingView 
+        style={styles.modalContainer} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
         {/* Overlay */}
         <Animated.View style={[styles.overlay, overlayAnimatedStyle]}>
           <Pressable style={styles.overlayPressable} onPress={dismiss} />
@@ -164,14 +170,22 @@ export default function BottomSheet({
               <View style={styles.handle} />
             </View>
 
-            {/* Content */}
-            <View style={styles.content}>{children}</View>
+            {/* Content - wrapped in ScrollView for keyboard */}
+            <ScrollView 
+              style={styles.scrollContent}
+              contentContainerStyle={styles.scrollContentContainer}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              {children}
+            </ScrollView>
 
             {/* Bottom Extension to fill gap */}
             <View style={styles.bottomExtension} />
           </Animated.View>
         </GestureDetector>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -206,8 +220,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#444",
     borderRadius: 2,
   },
-  content: {
+  scrollContent: {
     flexShrink: 1,
+  },
+  scrollContentContainer: {
+    paddingBottom: 20,
   },
   bottomExtension: {
     position: "absolute",

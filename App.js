@@ -21,11 +21,11 @@ export default function App() {
     Inter_700Bold,
   });
 
-  // Make Android gesture bar transparent
+  // Set Android navigation bar to dark to match app
   useEffect(() => {
     if (Platform.OS === "android") {
-      NavigationBar.setBackgroundColorAsync("transparent");
-      NavigationBar.setPositionAsync("absolute");
+      NavigationBar.setBackgroundColorAsync("#1A1A1A");
+      NavigationBar.setButtonStyleAsync("light");
     }
   }, []);
 

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Hammer, Scroll } from 'lucide-react-native'; 
 import Anvil from './anvil';
 import IngotList from './ingotlist';
 
 export default function Home() {
     const [activeTab, setActiveTab] = useState('anvil');
+    const insets = useSafeAreaInsets();
 
     return (
         <View style={styles.container}>
@@ -14,7 +16,10 @@ export default function Home() {
             </View>
 
             {/* Bottom Navigation Bar */}
-            <View style={styles.bottomBar}>
+            <View style={[
+                styles.bottomBar, 
+                { paddingBottom: insets.bottom + 24 }
+            ]}>
                 <Pressable 
                     style={styles.tab} 
                     onPress={() => setActiveTab('anvil')}
@@ -61,12 +66,11 @@ const styles = StyleSheet.create({
     },
     bottomBar: {
         flexDirection: 'row',
-        height: 80,
+        paddingTop: 12,
         backgroundColor: '#1A1A1A',
         borderTopWidth: 1,
         borderTopColor: '#333',
-        paddingBottom: 20, // for bottom safe area spacing simulation
-                    shadowColor: "#000",
+        shadowColor: "#000",
         shadowOffset: {
             width: 0,
             height: -4,

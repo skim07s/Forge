@@ -6,25 +6,49 @@ import {
   Pressable,
   TextInput,
   Switch,
+  Modal,
+  KeyboardAvoidingView,
+  ScrollView,
+  Platform,
+  Keyboard,
 } from "react-native";
-import BottomSheet from "./BottomSheet";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
+
+const SPRING_CONFIG = {
+  mass: 1.1,
+  damping: 14,
+  stiffness: 85,
+};
 
 export default function NewHabitSheet({ visible, onClose, onCreate }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [reminderEnabled, setReminderEnabled] = useState(false);
+  const overlayOpacity = useSharedValue(0);
+  const translateY = useSharedValue(500);
 
   useEffect(() => {
     if (visible) {
       setTitle("");
       setDescription("");
       setReminderEnabled(false);
+      translateY.value = withSpring(0, SPRING_CONFIG);
+      overlayOpacity.value = withTiming(1, { duration: 200 });
+    } else {
+      translateY.value = 500;
+      overlayOpacity.value = 0;
     }
   }, [visible]);
 
   const handleCreate = () => {
     const name = title.trim();
     if (!name) return;
+    Keyboard.dismiss();
     onCreate?.({
       title: name,
       description: description.trim(),
@@ -32,70 +56,139 @@ export default function NewHabitSheet({ visible, onClose, onCreate }) {
     });
   };
 
+  const handleClose = () => {
+    Keyboard.dismiss();
+    translateY.value = withSpring(500, SPRING_CONFIG);
+    overlayOpacity.value = withTiming(0, { duration: 200 });
+    setTimeout(onClose, 300);
+  };
+
+  const overlayAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: overlayOpacity.value,
+  }));
+
+  const sheetAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  if (!visible) return null;
+
   return (
-    <BottomSheet visible={visible} onClose={onClose} maxHeight={0.7}>
-      <View style={styles.header}>
-        <Text style={styles.title}>New Habit</Text>
-        <Pressable onPress={onClose} style={styles.closeButton}>
-          <Text style={styles.closeText}>✕</Text>
-        </Pressable>
-      </View>
+    <Modal transparent visible={visible} animationType="none">
+      <KeyboardAvoidingView 
+        style={styles.container} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        {/* Overlay */}
+        <Animated.View style={[styles.overlay, overlayAnimatedStyle]}>
+          <Pressable style={styles.overlayPressable} onPress={handleClose} />
+        </Animated.View>
 
-      <View style={styles.body}>
-        <Text style={styles.label}>Habit name</Text>
-        <TextInput
-          autoFocus
-          value={title}
-          onChangeText={setTitle}
-          placeholder="e.g. Morning run"
-          placeholderTextColor="#666"
-          style={styles.input}
-          onSubmitEditing={handleCreate}
-          returnKeyType="done"
-        />
+        {/* Sheet */}
+        <Animated.View style={[styles.sheet, sheetAnimatedStyle]}>
+          {/* Handle */}
+          <View style={styles.handleContainer}>
+            <View style={styles.handle} />
+          </View>
 
-        <Text style={[styles.label, { marginTop: 16 }]}>Description</Text>
-        <TextInput
-          value={description}
-          onChangeText={setDescription}
-          placeholder="Optional: add details about this habit"
-          placeholderTextColor="#666"
-          style={[styles.input, styles.textarea]}
-          multiline
-        />
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.title}>New Habit</Text>
+            <Pressable onPress={handleClose} style={styles.closeButton}>
+              <Text style={styles.closeText}>✕</Text>
+            </Pressable>
+          </View>
 
-        <View style={styles.toggleRow}>
-          <Text style={styles.toggleLabel}>Set reminder</Text>
-          <Switch
-            value={reminderEnabled}
-            onValueChange={setReminderEnabled}
-            trackColor={{ false: "#555", true: "#FF8A5A" }}
-            thumbColor={reminderEnabled ? "#FF6B35" : "#CCC"}
-          />
-        </View>
-      </View>
+          {/* Scrollable Content */}
+          <ScrollView 
+            style={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.label}>Habit name</Text>
+            <TextInput
+              autoFocus
+              value={title}
+              onChangeText={setTitle}
+              placeholder="e.g. Morning run"
+              placeholderTextColor="#666"
+              style={styles.input}
+              returnKeyType="next"
+            />
 
-      <View style={styles.footer}>
-        <Pressable style={[styles.button, styles.cancel]} onPress={onClose}>
-          <Text style={styles.buttonText}>Cancel</Text>
-        </Pressable>
-        <Pressable
-          style={[
-            styles.button,
-            styles.create,
-            { opacity: title.trim() ? 1 : 0.6 },
-          ]}
-          onPress={handleCreate}
-          disabled={!title.trim()}
-        >
-          <Text style={[styles.buttonText, styles.createText]}>Create</Text>
-        </Pressable>
-      </View>
-    </BottomSheet>
+            <Text style={[styles.label, { marginTop: 16 }]}>Description</Text>
+            <TextInput
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Optional: add details about this habit"
+              placeholderTextColor="#666"
+              style={[styles.input, styles.textarea]}
+              multiline
+            />
+
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleLabel}>Set reminder</Text>
+              <Switch
+                value={reminderEnabled}
+                onValueChange={setReminderEnabled}
+                trackColor={{ false: "#555", true: "#FF8A5A" }}
+                thumbColor={reminderEnabled ? "#FF6B35" : "#CCC"}
+              />
+            </View>
+          </ScrollView>
+
+          {/* Footer - Always visible above keyboard */}
+          <View style={styles.footer}>
+            <Pressable style={[styles.button, styles.cancel]} onPress={handleClose}>
+              <Text style={styles.buttonText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.button,
+                styles.create,
+                { opacity: title.trim() ? 1 : 0.6 },
+              ]}
+              onPress={handleCreate}
+              disabled={!title.trim()}
+            >
+              <Text style={[styles.buttonText, styles.createText]}>Create</Text>
+            </Pressable>
+          </View>
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  overlayPressable: {
+    flex: 1,
+  },
+  sheet: {
+    backgroundColor: "#1A1A1A",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    maxHeight: "70%",
+  },
+  handleContainer: {
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#444",
+    borderRadius: 2,
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -120,9 +213,8 @@ const styles = StyleSheet.create({
     color: "#888",
     fontSize: 16,
   },
-  body: {
-    marginTop: 8,
-    marginBottom: 16,
+  scrollContent: {
+    flexGrow: 0,
   },
   label: {
     fontSize: 12,
@@ -146,6 +238,7 @@ const styles = StyleSheet.create({
   },
   toggleRow: {
     marginTop: 16,
+    marginBottom: 16,
     backgroundColor: "#242424",
     borderRadius: 12,
     paddingHorizontal: 14,
@@ -163,7 +256,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     paddingTop: 8,
-    paddingBottom: 24,
+    paddingBottom: 32,
   },
   button: {
     flex: 1,
@@ -187,3 +280,4 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
 });
+

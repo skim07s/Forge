@@ -1,89 +1,54 @@
 import { create } from "zustand";
-import { Platform } from "react-native";
-import { calculateStreak } from "./utils";
-
-// Platform-aware storage
-let storage = null;
-
-// Initialize storage based on platform
-try {
-  if (Platform.OS !== "web") {
-    const { MMKV } = require("react-native-mmkv");
-    storage = new MMKV();
-  }
-} catch (error) {
-  console.warn("MMKV initialization failed, falling back to localStorage");
-}
+import { persist, createJSONStorage } from "zustand/middleware";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Get today's date in YYYY-MM-DD format
 const getToday = () => new Date().toISOString().split("T")[0];
 
-// Storage adapter
-const storageAdapter = {
-  getString: (key) => {
-    if (storage && Platform.OS !== "web") {
-      return storage.getString(key);
+// Calculate streak from completedDates
+const calculateStreak = (completedDates) => {
+  if (!completedDates || completedDates.length === 0) return 0;
+
+  const today = getToday();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+  const sorted = [...completedDates].sort((a, b) => b.localeCompare(a));
+  
+  // Check if streak is active (completed today or yesterday)
+  if (sorted[0] !== today && sorted[0] !== yesterdayStr) return 0;
+
+  let streak = 0;
+  let checkDate = new Date(sorted[0]);
+
+  for (const dateStr of sorted) {
+    const expectedStr = checkDate.toISOString().split("T")[0];
+    if (dateStr === expectedStr) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else if (dateStr < expectedStr) {
+      break;
     }
-    // Fallback to localStorage for web
-    if (typeof localStorage !== "undefined") {
-      return localStorage.getItem(key);
-    }
-    return null;
-  },
-  set: (key, value) => {
-    if (storage && Platform.OS !== "web") {
-      storage.set(key, value);
-    }
-    // Fallback to localStorage for web
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(key, value);
-    }
-  },
-  delete: (key) => {
-    if (storage && Platform.OS !== "web") {
-      storage.delete(key);
-    }
-    // Fallback to localStorage for web
-    if (typeof localStorage !== "undefined") {
-      localStorage.removeItem(key);
-    }
-  },
+  }
+
+  return streak;
 };
 
-// Zustand store with platform-aware persistence
-export const useHabitStore = create((set, get) => {
-  // Load initial habits from storage
-  const loadHabitsFromStorage = () => {
-    try {
-      const stored = storageAdapter.getString("habits");
-      return stored ? JSON.parse(stored) : [];
-    } catch (error) {
-      console.error("Error loading habits from storage:", error);
-      return [];
-    }
-  };
+// Zustand store with AsyncStorage persistence
+export const useHabitStore = create(
+  persist(
+    (set, get) => ({
+      habits: [],
 
-  // Save habits to storage
-  const saveHabitsToStorage = (habits) => {
-    try {
-      storageAdapter.set("habits", JSON.stringify(habits));
-    } catch (error) {
-      console.error("Error saving habits to storage:", error);
-    }
-  };
-
-  return {
-    habits: loadHabitsFromStorage(),
-
-    // Add a new habit
-    addHabit: (input) => {
-      set((state) => {
+      // Add a new habit
+      addHabit: (input) => {
         const payload =
           typeof input === "string"
             ? { title: input.trim() }
             : { ...input, title: (input?.title || "").trim() };
 
-        if (!payload.title) return {};
+        if (!payload.title) return;
 
         const newHabit = {
           id: Date.now().toString(),
@@ -93,81 +58,75 @@ export const useHabitStore = create((set, get) => {
           streak: 0,
           completedToday: false,
           startDate: getToday(),
-          completedDates: [], // Ensure new habits have this array
+          completedDates: [],
         };
-        const updatedHabits = [...state.habits, newHabit];
-        saveHabitsToStorage(updatedHabits);
-        return { habits: updatedHabits };
-      });
-    },
 
-    // Delete a habit
-    deleteHabit: (id) => {
-      set((state) => {
-        const updatedHabits = state.habits.filter((habit) => habit.id !== id);
-        saveHabitsToStorage(updatedHabits);
-        return { habits: updatedHabits };
-      });
-    },
+        set((state) => ({ habits: [...state.habits, newHabit] }));
+      },
 
-    // Toggle habit completion for today
-    toggleHabit: (id) => {
-      set((state) => {
+      // Delete a habit
+      deleteHabit: (id) => {
+        set((state) => ({
+          habits: state.habits.filter((habit) => habit.id !== id),
+        }));
+      },
+
+      // Toggle habit completion for today
+      toggleHabit: (id) => {
         const today = getToday();
-        const updatedHabits = state.habits.map((habit) => {
-          if (habit.id !== id) return habit;
+        set((state) => ({
+          habits: state.habits.map((habit) => {
+            if (habit.id !== id) return habit;
 
-          const isCompletedToday = (habit.completedDates || []).includes(today);
-          const newCompletedDates = isCompletedToday
-            ? (habit.completedDates || []).filter((d) => d !== today)
-            : [...(habit.completedDates || []), today];
+            const isCompletedToday = (habit.completedDates || []).includes(today);
+            const newCompletedDates = isCompletedToday
+              ? (habit.completedDates || []).filter((d) => d !== today)
+              : [...(habit.completedDates || []), today];
 
-          return {
-            ...habit,
-            completedToday: !habit.completedToday,
-            completedDates: newCompletedDates,
-            streak: calculateStreak(newCompletedDates),
-          };
-        });
-        saveHabitsToStorage(updatedHabits);
-        return { habits: updatedHabits };
-      });
-    },
+            return {
+              ...habit,
+              completedToday: !isCompletedToday,
+              completedDates: newCompletedDates,
+              streak: calculateStreak(newCompletedDates),
+            };
+          }),
+        }));
+      },
 
-    // Toggle completion for a specific date (retroactive tracking)
-    toggleDateForHabit: (habitId, date) => {
-      set((state) => {
-        const updatedHabits = state.habits.map((habit) => {
-          if (habit.id !== habitId) return habit;
+      // Toggle completion for a specific date (retroactive tracking)
+      toggleDateForHabit: (habitId, date) => {
+        const today = getToday();
+        set((state) => ({
+          habits: state.habits.map((habit) => {
+            if (habit.id !== habitId) return habit;
 
-          const isCompleted = (habit.completedDates || []).includes(date);
-          const newCompletedDates = isCompleted
-            ? (habit.completedDates || []).filter((d) => d !== date)
-            : [...(habit.completedDates || []), date];
+            const isCompleted = (habit.completedDates || []).includes(date);
+            const newCompletedDates = isCompleted
+              ? (habit.completedDates || []).filter((d) => d !== date)
+              : [...(habit.completedDates || []), date];
 
-          const today = getToday();
-          const isToday = date === today;
+            const isToday = date === today;
 
-          return {
-            ...habit,
-            completedDates: newCompletedDates,
-            completedToday: isToday
-              ? newCompletedDates.includes(today)
-              : habit.completedToday,
-            streak: calculateStreak(newCompletedDates),
-          };
-        });
-        saveHabitsToStorage(updatedHabits);
-        return { habits: updatedHabits };
-      });
-    },
+            return {
+              ...habit,
+              completedDates: newCompletedDates,
+              completedToday: isToday
+                ? newCompletedDates.includes(today)
+                : habit.completedToday,
+              streak: calculateStreak(newCompletedDates),
+            };
+          }),
+        }));
+      },
 
-    // Clear all habits (for debugging)
-    clearAllHabits: () => {
-      set(() => {
-        storageAdapter.delete("habits");
-        return { habits: [] };
-      });
-    },
-  };
-});
+      // Clear all habits (for debugging)
+      clearAllHabits: () => {
+        set({ habits: [] });
+      },
+    }),
+    {
+      name: "forge-habits-storage",
+      storage: createJSONStorage(() => AsyncStorage),
+    }
+  )
+);

@@ -7,7 +7,7 @@ import {
   TextInput,
   Pressable,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import HabitCard from "../components/HabitCard";
 import HabitSheet from "../components/HabitSheet";
 import NewHabitSheet from "../components/NewHabitSheet";
@@ -19,6 +19,7 @@ export default function Anvil() {
   const deleteHabit = useHabitStore((state) => state.deleteHabit);
   const toggleHabit = useHabitStore((state) => state.toggleHabit);
   const toggleDateForHabit = useHabitStore((state) => state.toggleDateForHabit);
+  const insets = useSafeAreaInsets();
 
   const [newHabitSheetVisible, setNewHabitSheetVisible] = useState(false);
   const [selectedHabitId, setSelectedHabitId] = useState(null);
@@ -113,7 +114,7 @@ export default function Anvil() {
         renderItem={renderHabit}
         keyExtractor={(item) => item.id}
         style={styles.list}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 100 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -124,7 +125,7 @@ export default function Anvil() {
 
       {/* Floating Add Button */}
       <Pressable
-        style={styles.addButton}
+        style={[styles.addButton, { bottom: 100 + insets.bottom }]}
         onPress={() => setNewHabitSheetVisible(true)}
         accessibilityLabel="Add new habit"
       >
