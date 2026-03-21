@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { memo, useMemo } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
+import Svg, { Path } from "react-native-svg";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -7,11 +8,12 @@ import Animated, {
   withSpring,
   withSequence,
 } from "react-native-reanimated";
+import { useTheme } from "../context/themeContext";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // Animated Button Component with bounce effect
-function AnimatedButton({ style, onPress, children, disabled }) {
+function AnimatedButton({ style, onPress, children, disabled, ...rest }) {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -38,63 +40,35 @@ function AnimatedButton({ style, onPress, children, disabled }) {
       style={[style, animatedStyle]}
       onPress={handlePress}
       disabled={disabled}
+      {...rest}
     >
       {children}
     </AnimatedPressable>
   );
 }
 
-export default function HabitCard({
+function HabitCard({
   habit,
   onToggle,
   onDelete,
   onExpand,
   onDateToggle,
-  index = 0,
+  weekDates = [],
 }) {
   const { id, title, streak, completedToday, completedDates = [] } = habit;
-  const [currentDate, setCurrentDate] = useState(new Date());
-
-  // Update date when day changes
-  useEffect(() => {
-    const checkDateChange = () => {
-      const now = new Date();
-      if (now.toDateString() !== currentDate.toDateString()) {
-        setCurrentDate(now);
-      }
-    };
-
-    const interval = setInterval(checkDateChange, 60000);
-    return () => clearInterval(interval);
-  }, [currentDate]);
-
-  // Get current week dates
-  const getWeekDates = () => {
-    const today = currentDate;
-    const dayOfWeek = today.getDay();
-    const todayStr = today.toISOString().split("T")[0];
-    const dates = [];
-
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(today);
-      date.setDate(today.getDate() - dayOfWeek + i);
-      const dateStr = date.toISOString().split("T")[0];
-      dates.push({
-        date: dateStr,
-        day: date.getDate(),
-        dayName: ["S", "M", "T", "W", "T", "F", "S"][i],
-        isToday: dateStr === todayStr,
-        isFuture: dateStr > todayStr,
-      });
-    }
-    return dates;
-  };
-
-  const weekDates = getWeekDates();
+  const { theme } = useTheme();
+  const completedDateSet = useMemo(
+    () => new Set(completedDates),
+    [completedDates]
+  );
 
   return (
     <View
-      style={[styles.container, completedToday && styles.containerCompleted]}
+      style={[
+        styles.container,
+        { backgroundColor: theme.surface },
+        completedToday && styles.containerCompleted,
+      ]}
     >
       <View style={styles.mainContent}>
         <Pressable style={styles.content} onLongPress={() => onDelete(id)}>
@@ -102,56 +76,100 @@ export default function HabitCard({
           <AnimatedButton
             style={[
               styles.checkbox,
+              { borderColor: theme.border },
               completedToday && styles.checkboxChecked,
+              completedToday && {
+                backgroundColor: theme.accentStrong,
+                borderColor: theme.accentStrong,
+              },
             ]}
             onPress={() => onToggle(id)}
+            accessibilityRole="checkbox"
+            accessibilityLabel={
+              completedToday
+                ? `Mark ${title} as not completed`
+                : `Mark ${title} as completed`
+            }
+            accessibilityState={{ checked: completedToday }}
+            hitSlop={8}
           >
-            {completedToday && <Text style={styles.checkmark}>✓</Text>}
+            {completedToday && <Text style={[styles.checkmark, { color: theme.textOnAccent }]}>✓</Text>}
           </AnimatedButton>
 
           <View style={styles.textContainer}>
             <Text
-              style={[styles.title, completedToday && styles.titleCompleted]}
+              style={[
+                styles.title,
+                { color: theme.textPrimary },
+                completedToday && styles.titleCompleted,
+                completedToday && { color: theme.textMuted },
+              ]}
+              numberOfLines={1}
             >
               {title}
             </Text>
-            <Text style={styles.streak}>🔥 {streak} day streak</Text>
+            <Text style={[styles.streak, { color: theme.accent }]}>🔥 {streak} day streak</Text>
           </View>
 
           {/* Expand button with bounce animation */}
           <AnimatedButton
-            style={styles.expandButton}
+            style={[styles.expandButton, { backgroundColor: theme.surfaceMuted }]}
             onPress={() => onExpand && onExpand(id)}
+            accessibilityRole="button"
+            accessibilityLabel={`Open details for ${title}`}
+            hitSlop={8}
           >
-            <Text style={styles.expandIcon}>⌄</Text>
+            <Svg
+              width={16}
+              height={16}
+              viewBox="0 0 24 24"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              {/* Path copied from src/assets/angle-small-down.svg */}
+              <Path
+                d="M12,15.5a1.993,1.993,0,0,1-1.414-.585L5.293,9.621,6.707,8.207,12,13.5l5.293-5.293,1.414,1.414-5.293,5.293A1.993,1.993,0,0,1,12,15.5Z"
+                fill={theme.textSecondary}
+              />
+            </Svg>
           </AnimatedButton>
         </Pressable>
 
         {/* Week Calendar */}
         <View style={styles.weekCalendar}>
           {weekDates.map((day) => {
-            const isCompleted = completedDates.includes(day.date);
+            const isCompleted = completedDateSet.has(day.date);
             return (
               <View
                 key={day.date}
                 style={[styles.dayContainer, day.isFuture && { opacity: 0.3 }]}
               >
-                <Text style={styles.dayName}>{day.dayName}</Text>
+                <Text style={[styles.dayName, { color: theme.textMuted }]}>{day.dayName}</Text>
                 {/* Date button with bounce animation */}
                 <AnimatedButton
                   style={[
                     styles.dayCircle,
+                    { backgroundColor: theme.surfaceMuted },
                     isCompleted && styles.dayCompleted,
+                    isCompleted && { backgroundColor: theme.accentStrong },
                     day.isToday && styles.dayToday,
+                    day.isToday && { borderColor: theme.accentStrong },
                   ]}
                   onPress={() => onDateToggle && onDateToggle(id, day.date)}
                   disabled={day.isFuture}
+                  accessibilityRole="checkbox"
+                  accessibilityLabel={`${day.dayName} ${day.day}`}
+                  accessibilityState={{ disabled: day.isFuture, checked: isCompleted }}
+                  hitSlop={6}
                 >
                   <Text
                     style={[
                       styles.dayNumber,
+                      { color: theme.textMuted },
                       isCompleted && styles.dayNumberCompleted,
+                      isCompleted && { color: theme.textOnAccent },
                       day.isToday && !isCompleted && styles.dayNumberToday,
+                      day.isToday && !isCompleted && { color: theme.accentStrong },
                     ]}
                   >
                     {day.day}
@@ -166,15 +184,26 @@ export default function HabitCard({
   );
 }
 
+function areEqual(prevProps, nextProps) {
+  return (
+    prevProps.habit === nextProps.habit &&
+    prevProps.weekDates === nextProps.weekDates &&
+    prevProps.onToggle === nextProps.onToggle &&
+    prevProps.onDelete === nextProps.onDelete &&
+    prevProps.onExpand === nextProps.onExpand &&
+    prevProps.onDateToggle === nextProps.onDateToggle
+  );
+}
+
+export default memo(HabitCard, areEqual);
+
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#1A1A1A",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
   },
   containerCompleted: {
-    backgroundColor: "#1A1A1A",
   },
   mainContent: {
     gap: 12,
@@ -189,16 +218,12 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: "#444",
     justifyContent: "center",
     alignItems: "center",
   },
   checkboxChecked: {
-    backgroundColor: "#FFB800",
-    borderColor: "#FFB800",
   },
   checkmark: {
-    color: "#0D0D0D",
     fontSize: 16,
     fontFamily: "Inter_700Bold",
   },
@@ -208,30 +233,21 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontFamily: "Inter_500Medium",
-    color: "#FFFFFF",
     marginBottom: 2,
   },
   titleCompleted: {
     textDecorationLine: "line-through",
-    color: "#666",
   },
   streak: {
     fontSize: 12,
     fontFamily: "Inter_500Medium",
-    color: "#FF6B35",
   },
   expandButton: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     borderRadius: 8,
-    backgroundColor: "#252525",
     justifyContent: "center",
     alignItems: "center",
-  },
-  expandIcon: {
-    fontSize: 20,
-    color: "#888",
-    marginTop: -4,
   },
   weekCalendar: {
     flexDirection: "row",
@@ -243,34 +259,27 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   dayName: {
-    fontSize: 10,
-    color: "#666",
+    fontSize: 11,
     fontFamily: "Inter_500Medium",
   },
   dayCircle: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#252525",
     justifyContent: "center",
     alignItems: "center",
   },
   dayCompleted: {
-    backgroundColor: "#FFB800",
   },
   dayToday: {
     borderWidth: 2,
-    borderColor: "#FFB800",
   },
   dayNumber: {
     fontSize: 12,
-    color: "#666",
     fontFamily: "Inter_600SemiBold",
   },
   dayNumberCompleted: {
-    color: "#0D0D0D",
   },
   dayNumberToday: {
-    color: "#FFB800",
   },
 });

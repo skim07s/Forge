@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useMemo } from "react";
+import React, { memo, useState, useRef, useCallback, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   FlatList,
   useWindowDimensions,
 } from "react-native";
+import { useTheme } from "../context/themeContext";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -29,14 +30,18 @@ const MONTHS_BEFORE = 6;
 
 // Generate calendar days for a specific month
 const generateCalendarDays = (year, month, completedDates = []) => {
+  const completedDateLookup =
+    completedDates instanceof Set ? completedDates : new Set(completedDates);
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
   const daysInMonth = lastDay.getDate();
   const startDayOfWeek = firstDay.getDay();
 
   const today = new Date();
-  const isCurrentMonth =
-    today.getFullYear() === year && today.getMonth() === month;
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(today.getDate()).padStart(2, "0")}`;
 
   const days = [];
 
@@ -50,11 +55,9 @@ const generateCalendarDays = (year, month, completedDates = []) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(
       day
     ).padStart(2, "0")}`;
-    const isCompleted = completedDates.includes(dateStr);
-    const isToday = isCurrentMonth && day === today.getDate();
-    const isPast =
-      new Date(year, month, day) <
-      new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const isCompleted = completedDateLookup.has(dateStr);
+    const isToday = dateStr === todayStr;
+    const isPast = dateStr < todayStr;
 
     days.push({
       day,
@@ -90,23 +93,30 @@ const generateMonthIndices = () => {
   return Array.from({ length: MONTHS_BEFORE + 1 }, (_, i) => i);
 };
 
-export default function Calendar({
+function Calendar({
   completedDates = [],
   onDatePress,
   selectedDate,
   streakCount = 0,
   habitTitle = "Habit",
   showHeader = true,
+  onHorizontalGestureStart,
+  onHorizontalGestureEnd,
 }) {
+  const { theme } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
   const calendarWidth = screenWidth - 64; // Account for modal/sheet padding
   const dayCellWidth = Math.floor(calendarWidth / 7);
+  const gridWidth = dayCellWidth * 7;
 
-  const today = new Date();
   const flatListRef = useRef(null);
   const [currentIndex, setCurrentIndex] = useState(MONTHS_BEFORE);
 
   const monthIndices = useMemo(() => generateMonthIndices(), []);
+  const completedDatesSet = useMemo(
+    () => new Set(completedDates),
+    [completedDates]
+  );
 
   const currentMonthData = useMemo(
     () => getMonthData(currentIndex),
@@ -116,8 +126,8 @@ export default function Calendar({
 
   // Calculate stats for current visible month
   const calendarDays = useMemo(
-    () => generateCalendarDays(currentYear, currentMonth, completedDates),
-    [currentYear, currentMonth, completedDates]
+    () => generateCalendarDays(currentYear, currentMonth, completedDatesSet),
+    [currentYear, currentMonth, completedDatesSet]
   );
 
   const monthCompletedCount = calendarDays.filter((d) => d.completed).length;
@@ -162,12 +172,98 @@ export default function Calendar({
     itemVisiblePercentThreshold: 50,
   }).current;
 
-  const gridWidth = dayCellWidth * 7;
+  const isCalendarGestureActiveRef = useRef(false);
+  const isMomentumScrollingRef = useRef(false);
+  const swipeStartIndexRef = useRef(MONTHS_BEFORE);
+  const isUserPagingRef = useRef(false);
+
+  const beginHorizontalGesture = useCallback(() => {
+    if (isCalendarGestureActiveRef.current) return;
+
+    isCalendarGestureActiveRef.current = true;
+    onHorizontalGestureStart?.();
+  }, [onHorizontalGestureStart]);
+
+  const endHorizontalGesture = useCallback(() => {
+    if (!isCalendarGestureActiveRef.current) return;
+
+    isCalendarGestureActiveRef.current = false;
+    onHorizontalGestureEnd?.();
+  }, [onHorizontalGestureEnd]);
+
+  const handleTouchStart = useCallback(() => {
+    beginHorizontalGesture();
+  }, [beginHorizontalGesture]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!isMomentumScrollingRef.current) {
+      isUserPagingRef.current = false;
+      endHorizontalGesture();
+    }
+  }, [endHorizontalGesture]);
+
+  const handleTouchCancel = useCallback(() => {
+    if (!isMomentumScrollingRef.current) {
+      isUserPagingRef.current = false;
+      endHorizontalGesture();
+    }
+  }, [endHorizontalGesture]);
+
+  const handleScrollBeginDrag = useCallback(() => {
+    beginHorizontalGesture();
+    isUserPagingRef.current = true;
+    swipeStartIndexRef.current = currentIndex;
+  }, [beginHorizontalGesture, currentIndex]);
+
+  const handleScrollEndDrag = useCallback(() => {
+    if (!isMomentumScrollingRef.current) {
+      isUserPagingRef.current = false;
+      endHorizontalGesture();
+    }
+  }, [endHorizontalGesture]);
+
+  const handleMomentumScrollBegin = useCallback(() => {
+    isMomentumScrollingRef.current = true;
+    beginHorizontalGesture();
+  }, [beginHorizontalGesture]);
+
+  const handleMomentumScrollEnd = useCallback((event) => {
+    const rawIndex = Math.round(event.nativeEvent.contentOffset.x / gridWidth);
+    const boundedIndex = Math.max(0, Math.min(MONTHS_BEFORE, rawIndex));
+    let nextIndex = boundedIndex;
+
+    if (isUserPagingRef.current) {
+      const delta = boundedIndex - swipeStartIndexRef.current;
+      if (Math.abs(delta) > 1) {
+        nextIndex = swipeStartIndexRef.current + Math.sign(delta);
+      }
+    }
+
+    if (nextIndex !== boundedIndex) {
+      flatListRef.current?.scrollToIndex({
+        index: nextIndex,
+        animated: false,
+      });
+    }
+
+    setCurrentIndex((prev) => (prev === nextIndex ? prev : nextIndex));
+    isUserPagingRef.current = false;
+    isMomentumScrollingRef.current = false;
+    endHorizontalGesture();
+  }, [endHorizontalGesture, gridWidth]);
+
+  useEffect(() => {
+    return () => {
+      isUserPagingRef.current = false;
+      isMomentumScrollingRef.current = false;
+      endHorizontalGesture();
+    };
+  }, [endHorizontalGesture]);
 
   const renderMonthPage = useCallback(
     ({ item: index }) => {
       const { year, month } = getMonthData(index);
-      const days = generateCalendarDays(year, month, completedDates);
+      const days = generateCalendarDays(year, month, completedDatesSet);
 
       return (
         <View style={[styles.monthPage, { width: gridWidth }]}>
@@ -189,20 +285,33 @@ export default function Calendar({
                   <View
                     style={[
                       styles.dayCircle,
+                      { backgroundColor: theme.surfaceMuted },
                       dayItem.isFuture && styles.dayFuture,
+                      dayItem.isFuture && { backgroundColor: theme.surface },
                       dayItem.isToday && !dayItem.completed && styles.dayToday,
+                      dayItem.isToday &&
+                        !dayItem.completed && {
+                          borderColor: theme.accent,
+                          backgroundColor: theme.surfaceElevated,
+                        },
                       dayItem.completed && styles.dayCompleted,
+                      dayItem.completed && { backgroundColor: theme.accentStrong },
                       selectedDate === dayItem.date && styles.daySelected,
+                      selectedDate === dayItem.date && { borderColor: theme.textPrimary },
                     ]}
                   >
                     <Text
                       style={[
                         styles.dayText,
+                        { color: theme.textSecondary },
                         dayItem.isToday &&
                           !dayItem.completed &&
                           styles.dayTextToday,
+                        dayItem.isToday && !dayItem.completed && { color: theme.accentStrong },
                         dayItem.completed && styles.dayTextCompleted,
+                        dayItem.completed && { color: theme.textOnAccent },
                         dayItem.isFuture && styles.dayTextFuture,
+                        dayItem.isFuture && { color: theme.textMuted },
                       ]}
                     >
                       {dayItem.day}
@@ -215,7 +324,22 @@ export default function Calendar({
         </View>
       );
     },
-    [completedDates, onDatePress, selectedDate, dayCellWidth, gridWidth]
+    [
+      completedDatesSet,
+      onDatePress,
+      selectedDate,
+      dayCellWidth,
+      gridWidth,
+      theme.accent,
+      theme.accentStrong,
+      theme.surface,
+      theme.surfaceElevated,
+      theme.surfaceMuted,
+      theme.textMuted,
+      theme.textOnAccent,
+      theme.textPrimary,
+      theme.textSecondary,
+    ]
   );
 
   const getItemLayout = useCallback(
@@ -228,13 +352,15 @@ export default function Calendar({
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.surface }]}>
       {/* Header with title and streak - optional */}
       {showHeader && (
         <View style={styles.header}>
-          <Text style={styles.habitTitle}>{habitTitle}</Text>
-          <View style={styles.streakBadge}>
-            <Text style={styles.streakText}>🔥 {streakCount}</Text>
+          <Text style={[styles.habitTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+            {habitTitle}
+          </Text>
+          <View style={[styles.streakBadge, { backgroundColor: theme.surfaceMuted }]}>
+            <Text style={[styles.streakText, { color: theme.accent }]}>🔥 {streakCount}</Text>
           </View>
         </View>
       )}
@@ -244,6 +370,7 @@ export default function Calendar({
         <Pressable
           style={[
             styles.navButton,
+            { backgroundColor: theme.surfaceMuted },
             currentIndex === 0 && styles.navButtonDisabled,
           ]}
           onPress={goToPreviousMonth}
@@ -252,7 +379,9 @@ export default function Calendar({
           <Text
             style={[
               styles.navButtonText,
+              { color: theme.textPrimary },
               currentIndex === 0 && styles.navButtonTextDisabled,
+              currentIndex === 0 && { color: theme.textMuted },
             ]}
           >
             ‹
@@ -260,7 +389,7 @@ export default function Calendar({
         </Pressable>
 
         <Pressable onPress={goToToday}>
-          <Text style={styles.monthTitle}>
+          <Text style={[styles.monthTitle, { color: theme.textPrimary }]} numberOfLines={1}>
             {MONTHS[currentMonth]} {currentYear}
           </Text>
         </Pressable>
@@ -268,6 +397,7 @@ export default function Calendar({
         <Pressable
           style={[
             styles.navButton,
+            { backgroundColor: theme.surfaceMuted },
             isCurrentMonthView && styles.navButtonDisabled,
           ]}
           onPress={goToNextMonth}
@@ -276,7 +406,9 @@ export default function Calendar({
           <Text
             style={[
               styles.navButtonText,
+              { color: theme.textPrimary },
               isCurrentMonthView && styles.navButtonTextDisabled,
+              isCurrentMonthView && { color: theme.textMuted },
             ]}
           >
             ›
@@ -286,7 +418,7 @@ export default function Calendar({
 
       {/* Stats for this month */}
       <View style={styles.monthStats}>
-        <Text style={styles.monthStatsText}>
+        <Text style={[styles.monthStatsText, { color: theme.textSecondary }]}>
           {monthCompletedCount} of {monthTotalDays} days • {monthPercentage}%
         </Text>
       </View>
@@ -294,7 +426,10 @@ export default function Calendar({
       {/* Weekday Headers */}
       <View style={[styles.weekdayRow, { width: gridWidth }]}>
         {WEEKDAYS.map((day) => (
-          <Text key={day} style={[styles.weekdayText, { width: dayCellWidth }]}>
+          <Text
+            key={day}
+            style={[styles.weekdayText, { width: dayCellWidth, color: theme.textMuted }]}
+          >
             {day}
           </Text>
         ))}
@@ -314,6 +449,7 @@ export default function Calendar({
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         decelerationRate="fast"
+        disableIntervalMomentum
         snapToInterval={gridWidth}
         snapToAlignment="start"
         extraData={completedDates}
@@ -321,37 +457,62 @@ export default function Calendar({
         windowSize={3}
         maxToRenderPerBatch={2}
         initialNumToRender={1}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
+        onScrollBeginDrag={handleScrollBeginDrag}
+        onScrollEndDrag={handleScrollEndDrag}
+        onMomentumScrollBegin={handleMomentumScrollBegin}
+        onMomentumScrollEnd={handleMomentumScrollEnd}
       />
 
       {/* Legend */}
-      <View style={styles.legend}>
+      <View style={[styles.legend, { borderTopColor: theme.divider }]}>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, styles.legendCompleted]} />
-          <Text style={styles.legendText}>Completed</Text>
+          <View style={[styles.legendDot, styles.legendCompleted, { backgroundColor: theme.accentStrong }]} />
+          <Text style={[styles.legendText, { color: theme.textSecondary }]}>Completed</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, styles.legendToday]} />
-          <Text style={styles.legendText}>Today</Text>
+          <View
+            style={[
+              styles.legendDot,
+              styles.legendToday,
+              { backgroundColor: theme.surfaceMuted, borderColor: theme.accent },
+            ]}
+          />
+          <Text style={[styles.legendText, { color: theme.textSecondary }]}>Today</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, styles.legendMissed]} />
-          <Text style={styles.legendText}>Missed</Text>
+          <View style={[styles.legendDot, styles.legendMissed, { backgroundColor: theme.surfaceElevated }]} />
+          <Text style={[styles.legendText, { color: theme.textSecondary }]}>Missed</Text>
         </View>
       </View>
 
       {/* Today Button */}
       {!isCurrentMonthView && (
-        <Pressable style={styles.todayButton} onPress={goToToday}>
-          <Text style={styles.todayButtonText}>Go to Today</Text>
+        <Pressable style={[styles.todayButton, { backgroundColor: theme.accent }]} onPress={goToToday}>
+          <Text style={[styles.todayButtonText, { color: theme.textOnAccent }]}>Go to Today</Text>
         </Pressable>
       )}
     </View>
   );
 }
 
+function areEqual(prevProps, nextProps) {
+  return (
+    prevProps.completedDates === nextProps.completedDates &&
+    prevProps.onDatePress === nextProps.onDatePress &&
+    prevProps.selectedDate === nextProps.selectedDate &&
+    prevProps.streakCount === nextProps.streakCount &&
+    prevProps.habitTitle === nextProps.habitTitle &&
+    prevProps.showHeader === nextProps.showHeader &&
+    prevProps.onHorizontalGestureStart === nextProps.onHorizontalGestureStart &&
+    prevProps.onHorizontalGestureEnd === nextProps.onHorizontalGestureEnd
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#1A1A1A",
     borderRadius: 16,
     padding: 16,
     overflow: "hidden",
@@ -365,10 +526,10 @@ const styles = StyleSheet.create({
   habitTitle: {
     fontSize: 20,
     fontFamily: "Inter_700Bold",
-    color: "#FFFFFF",
+    flexShrink: 1,
+    paddingRight: 8,
   },
   streakBadge: {
-    backgroundColor: "#252525",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -376,7 +537,6 @@ const styles = StyleSheet.create({
   streakText: {
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
-    color: "#FF6B35",
   },
   monthNav: {
     flexDirection: "row",
@@ -385,10 +545,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   navButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#252525",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -397,16 +556,14 @@ const styles = StyleSheet.create({
   },
   navButtonText: {
     fontSize: 24,
-    color: "#FFFFFF",
     marginTop: -2,
   },
   navButtonTextDisabled: {
-    color: "#666",
   },
   monthTitle: {
     fontSize: 18,
     fontFamily: "Inter_600SemiBold",
-    color: "#FFFFFF",
+    maxWidth: 170,
   },
   monthStats: {
     alignItems: "center",
@@ -415,7 +572,6 @@ const styles = StyleSheet.create({
   monthStatsText: {
     fontSize: 14,
     fontFamily: "Inter_400Regular",
-    color: "#888",
   },
   weekdayRow: {
     flexDirection: "row",
@@ -426,7 +582,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 12,
     fontFamily: "Inter_500Medium",
-    color: "#666",
   },
   monthPage: {
     // Width is set dynamically
@@ -447,38 +602,28 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#333",
   },
   dayCompleted: {
-    backgroundColor: "#FFB800",
   },
   dayToday: {
     borderWidth: 2,
-    borderColor: "#FF6B35",
-    backgroundColor: "#252525",
   },
   dayFuture: {
-    backgroundColor: "#1F1F1F",
   },
   daySelected: {
     borderWidth: 2,
-    borderColor: "#FFFFFF",
   },
   dayText: {
     fontSize: 14,
     fontFamily: "Inter_500Medium",
-    color: "#888",
   },
   dayTextCompleted: {
-    color: "#0D0D0D",
     fontFamily: "Inter_700Bold",
   },
   dayTextToday: {
-    color: "#FF6B35",
     fontFamily: "Inter_700Bold",
   },
   dayTextFuture: {
-    color: "#444",
   },
   legend: {
     flexDirection: "row",
@@ -487,7 +632,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: "#252525",
   },
   legendItem: {
     flexDirection: "row",
@@ -500,24 +644,18 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   legendCompleted: {
-    backgroundColor: "#FFB800",
   },
   legendToday: {
-    backgroundColor: "#252525",
     borderWidth: 2,
-    borderColor: "#FF6B35",
   },
   legendMissed: {
-    backgroundColor: "#333",
   },
   legendText: {
     fontSize: 12,
     fontFamily: "Inter_400Regular",
-    color: "#888",
   },
   todayButton: {
     marginTop: 16,
-    backgroundColor: "#FF6B35",
     borderRadius: 8,
     paddingVertical: 12,
     alignItems: "center",
@@ -525,6 +663,9 @@ const styles = StyleSheet.create({
   todayButtonText: {
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
-    color: "#FFFFFF",
   },
 });
+
+export default memo(Calendar, areEqual);
+
+

@@ -1,150 +1,429 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
-  TextInput,
   Pressable,
+  Alert,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import HabitCard from "../components/HabitCard";
 import HabitSheet from "../components/HabitSheet";
 import NewHabitSheet from "../components/NewHabitSheet";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { useHabitStore } from "../context/habitStore";
+import { useTheme } from "../context/themeContext";
+import { useShallow } from "zustand/react/shallow";
+import { triggerBubblePopHaptic } from "../utils/haptics";
+import {
+  scheduleDailyHabitReminder,
+  cancelHabitReminder,
+} from "../utils/notifications";
 
-export default function Anvil() {
-  const habits = useHabitStore((state) => state.habits);
-  const addHabit = useHabitStore((state) => state.addHabit);
-  const deleteHabit = useHabitStore((state) => state.deleteHabit);
-  const toggleHabit = useHabitStore((state) => state.toggleHabit);
-  const toggleDateForHabit = useHabitStore((state) => state.toggleDateForHabit);
+const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+const CHECK_DAY_CHANGE_INTERVAL_MS = 60000;
+
+const getIsoDate = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+export default function Anvil({ onPagerSwipeLockChange }) {
+  const {
+    habits,
+    addHabit,
+    updateHabit,
+    setHabitReminderNotificationId,
+    deleteHabit,
+    toggleHabit,
+    toggleDateForHabit,
+  } = useHabitStore(
+    useShallow((state) => ({
+      habits: state.habits,
+      addHabit: state.addHabit,
+      updateHabit: state.updateHabit,
+      setHabitReminderNotificationId: state.setHabitReminderNotificationId,
+      deleteHabit: state.deleteHabit,
+      toggleHabit: state.toggleHabit,
+      toggleDateForHabit: state.toggleDateForHabit,
+    }))
+  );
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [newHabitSheetVisible, setNewHabitSheetVisible] = useState(false);
   const [selectedHabitId, setSelectedHabitId] = useState(null);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [editingHabit, setEditingHabit] = useState(null);
+  const [isCalendarSwiping, setIsCalendarSwiping] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
-  // Get selected habit from store (stays in sync with updates)
-  const selectedHabit = selectedHabitId
-    ? habits.find((h) => h.id === selectedHabitId)
-    : null;
+  const selectedHabit = useMemo(
+    () => (selectedHabitId ? habits.find((h) => h.id === selectedHabitId) : null),
+    [habits, selectedHabitId]
+  );
 
-  // Update date when day changes
   useEffect(() => {
-    const checkDateChange = () => {
+    onPagerSwipeLockChange?.(
+      sheetVisible || newHabitSheetVisible || isCalendarSwiping
+    );
+  }, [
+    isCalendarSwiping,
+    newHabitSheetVisible,
+    onPagerSwipeLockChange,
+    sheetVisible,
+  ]);
+
+  useEffect(
+    () => () => {
+      onPagerSwipeLockChange?.(false);
+    },
+    [onPagerSwipeLockChange]
+  );
+
+  useEffect(() => {
+    const interval = setInterval(() => {
       const now = new Date();
-      if (now.toDateString() !== currentDate.toDateString()) {
-        setCurrentDate(now);
-      }
-    };
+      setCurrentDate((prevDate) =>
+        now.toDateString() === prevDate.toDateString() ? prevDate : now
+      );
+    }, CHECK_DAY_CHANGE_INTERVAL_MS);
 
-    // Check every minute
-    const interval = setInterval(checkDateChange, 60000);
     return () => clearInterval(interval);
-  }, [currentDate]);
+  }, []);
 
-  const openHabitSheet = (id) => {
+  const todayIso = useMemo(() => getIsoDate(currentDate), [currentDate]);
+  const currentDateLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      }).format(currentDate),
+    [currentDate]
+  );
+
+  const weekDates = useMemo(() => {
+    const dayOfWeek = currentDate.getDay();
+
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(currentDate);
+      date.setDate(currentDate.getDate() - dayOfWeek + index);
+      const dateIso = getIsoDate(date);
+
+      return {
+        date: dateIso,
+        day: date.getDate(),
+        dayName: DAY_LABELS[index],
+        isToday: dateIso === todayIso,
+        isFuture: dateIso > todayIso,
+      };
+    });
+  }, [currentDate, todayIso]);
+
+  const openHabitSheet = useCallback((id) => {
     setSelectedHabitId(id);
     setSheetVisible(true);
-  };
+  }, []);
 
-  const closeHabitSheet = () => {
+  const closeHabitSheet = useCallback(() => {
     setSheetVisible(false);
     setSelectedHabitId(null);
-  };
+    setIsCalendarSwiping(false);
+  }, []);
 
-  const handleCreateHabit = (payload) => {
-    // payload: { title, description, reminderEnabled }
-    addHabit(payload);
+  const openCreateHabitSheet = useCallback(() => {
+    setEditingHabit(null);
+    setNewHabitSheetVisible(true);
+  }, []);
+
+  const closeNewHabitSheet = useCallback(() => {
     setNewHabitSheetVisible(false);
-  };
+    setEditingHabit(null);
+  }, []);
 
-  const completedCount = habits.filter((h) => h.completedToday).length;
+  const syncHabitReminder = useCallback(
+    async (habit, reminderEnabled) => {
+      if (!habit?.id) return;
+
+      if (habit.reminderNotificationId) {
+        await cancelHabitReminder(habit.reminderNotificationId);
+      }
+
+      if (!reminderEnabled) {
+        setHabitReminderNotificationId(habit.id, null);
+        return;
+      }
+
+      const notificationId = await scheduleDailyHabitReminder({
+        habitId: habit.id,
+        habitTitle: habit.title,
+      });
+
+      setHabitReminderNotificationId(habit.id, notificationId);
+
+      if (!notificationId) {
+        Alert.alert(
+          "Notification Permission Required",
+          "Enable notifications in device settings to receive habit reminders."
+        );
+      }
+    },
+    [setHabitReminderNotificationId]
+  );
+
+  const handleSubmitHabit = useCallback(
+    async (payload) => {
+      let savedHabit = null;
+
+      if (editingHabit?.id) {
+        savedHabit = updateHabit(editingHabit.id, payload);
+      } else {
+        savedHabit = addHabit(payload);
+      }
+
+      if (!savedHabit) {
+        throw new Error("Unable to save habit");
+      }
+
+      await syncHabitReminder(savedHabit, !!payload.reminderEnabled);
+
+      void triggerBubblePopHaptic();
+      closeNewHabitSheet();
+    },
+    [addHabit, closeNewHabitSheet, editingHabit, syncHabitReminder, updateHabit]
+  );
+
+  const handleEditFromSheet = useCallback((habit) => {
+    if (!habit) return;
+    setEditingHabit(habit);
+    setNewHabitSheetVisible(true);
+    setSheetVisible(false);
+    setIsCalendarSwiping(false);
+  }, []);
+
+  const deleteHabitWithReminder = useCallback(
+    async (habit) => {
+      if (!habit?.id) return;
+
+      if (habit.reminderNotificationId) {
+        await cancelHabitReminder(habit.reminderNotificationId);
+      }
+
+      deleteHabit(habit.id);
+    },
+    [deleteHabit]
+  );
+
+  const handleDeleteFromSheet = useCallback(
+    (habit) => {
+      if (!habit?.id) return;
+      setDeleteTarget({ habit, closeSheetAfterDelete: true });
+    },
+    []
+  );
+
+  const handleCalendarGestureStart = useCallback(() => {
+    setIsCalendarSwiping(true);
+  }, []);
+
+  const handleCalendarGestureEnd = useCallback(() => {
+    setIsCalendarSwiping(false);
+  }, []);
+
+  const handleToggleHabit = useCallback(
+    (id) => {
+      const today = getIsoDate();
+      const habit = useHabitStore.getState().habits.find((h) => h.id === id);
+      const wasCompleted = habit?.completedDates?.includes(today);
+
+      toggleHabit(id);
+
+      if (!wasCompleted) {
+        void triggerBubblePopHaptic();
+      }
+    },
+    [toggleHabit]
+  );
+
+  const handleToggleDateForHabit = useCallback(
+    (id, dateStr) => {
+      const habit = useHabitStore.getState().habits.find((h) => h.id === id);
+      const wasCompleted = habit?.completedDates?.includes(dateStr);
+
+      toggleDateForHabit(id, dateStr);
+
+      if (!wasCompleted) {
+        void triggerBubblePopHaptic();
+      }
+    },
+    [toggleDateForHabit]
+  );
+
+  const completedCount = useMemo(
+    () => habits.filter((h) => h.completedToday).length,
+    [habits]
+  );
   const totalCount = habits.length;
-  const progressPercent =
-    totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const progressPercent = useMemo(
+    () =>
+      totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0,
+    [completedCount, totalCount]
+  );
 
-  const renderHabit = ({ item, index }) => (
-    <HabitCard
-      habit={item}
-      onToggle={toggleHabit}
-      onDelete={deleteHabit}
-      onExpand={openHabitSheet}
-      onDateToggle={toggleDateForHabit}
-      index={index}
-    />
+  const handleDeleteFromCard = useCallback(
+    (id) => {
+      const habit = habits.find((h) => h.id === id);
+      if (!habit) return;
+      setDeleteTarget({ habit, closeSheetAfterDelete: false });
+    },
+    [habits]
+  );
+
+  const handleCancelDelete = useCallback(() => {
+    setDeleteTarget(null);
+  }, []);
+
+  const handleConfirmDelete = useCallback(() => {
+    if (!deleteTarget?.habit) return;
+
+    const target = deleteTarget;
+    setDeleteTarget(null);
+
+    if (target.closeSheetAfterDelete) {
+      closeHabitSheet();
+    }
+
+    void deleteHabitWithReminder(target.habit);
+  }, [closeHabitSheet, deleteHabitWithReminder, deleteTarget]);
+
+  const renderHabit = useCallback(
+    ({ item }) => (
+      <HabitCard
+        habit={item}
+        onToggle={handleToggleHabit}
+        onDelete={handleDeleteFromCard}
+        onExpand={openHabitSheet}
+        onDateToggle={handleToggleDateForHabit}
+        weekDates={weekDates}
+      />
+    ),
+    [
+      handleDeleteFromCard,
+      handleToggleDateForHabit,
+      handleToggleHabit,
+      openHabitSheet,
+      weekDates,
+    ]
+  );
+
+  const keyExtractor = useCallback((item) => item.id, []);
+  const listBottomPadding = useMemo(
+    () => ({ paddingBottom: 64 + insets.bottom }),
+    [insets.bottom]
+  );
+  const addButtonBottomStyle = useMemo(
+    () => ({ bottom: 16 + insets.bottom }),
+    [insets.bottom]
+  );
+  const headerTopPadding = useMemo(
+    () => ({ paddingTop: insets.top + 8, paddingBottom: 12 }),
+    [insets.top]
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>The Anvil</Text>
-        <Text style={styles.date}>
-          {currentDate.toLocaleDateString("en-US", {
-            weekday: "long",
-            month: "long",
-            day: "numeric",
-          })}
-        </Text>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.background }]}
+      edges={["left", "right"]}
+    >
+      <View style={[styles.header, headerTopPadding]}>
+        <Text style={[styles.title, { color: theme.textPrimary }]}>The Anvil</Text>
+        <Text style={[styles.date, { color: theme.textSecondary }]}>{currentDateLabel}</Text>
       </View>
 
-      {/* Progress Card */}
-      <View style={styles.progressCard}>
+      <View style={[styles.progressCard, { backgroundColor: theme.surface }]}>
         <View style={styles.progressInfo}>
-          <Text style={styles.progressNumber}>
+          <Text style={[styles.progressNumber, { color: theme.accentStrong }]}>
             {completedCount}/{totalCount}
           </Text>
-          <Text style={styles.progressLabel}>Habits Forged</Text>
+          <Text style={[styles.progressLabel, { color: theme.textSecondary }]}>Habits Forged</Text>
         </View>
 
-        <View style={styles.progressBarContainer}>
+        <View style={[styles.progressBarContainer, { backgroundColor: theme.surfaceMuted }]}>
           <View
-            style={[styles.progressBar, { width: `${progressPercent}%` }]}
+            style={[styles.progressBar, { width: `${progressPercent}%`, backgroundColor: theme.accentStrong }]}
           />
         </View>
-        <Text style={styles.progressPercent}>{progressPercent}%</Text>
+        <Text style={[styles.progressPercent, { color: theme.textSecondary }]}>{progressPercent}%</Text>
       </View>
 
-      {/* Habit List */}
       <FlatList
         data={habits}
         renderItem={renderHabit}
-        keyExtractor={(item) => item.id}
+        keyExtractor={keyExtractor}
         style={styles.list}
-        contentContainerStyle={[styles.listContent, { paddingBottom: 80 + insets.bottom }]}
+        contentContainerStyle={[styles.listContent, listBottomPadding]}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={50}
+        windowSize={7}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>No habits yet. Add one below!</Text>
+            <Text style={[styles.emptyText, { color: theme.textMuted }]}>No habits yet. Add your first one below.</Text>
           </View>
         }
       />
 
-      {/* Floating Add Button */}
       <Pressable
-        style={[styles.addButton, { bottom: 16 + insets.bottom }]}
-        onPress={() => setNewHabitSheetVisible(true)}
+        style={[
+          styles.addButton,
+          addButtonBottomStyle,
+          { backgroundColor: theme.accent, shadowColor: theme.shadow },
+        ]}
+        onPress={openCreateHabitSheet}
         accessibilityLabel="Add new habit"
+        accessibilityRole="button"
       >
-        <Text style={styles.addButtonText}>+</Text>
+        <Text style={[styles.addButtonText, { color: theme.textOnAccent }]}>+</Text>
       </Pressable>
 
-      {/* Habit Detail Sheet */}
       <HabitSheet
         visible={sheetVisible}
         habit={selectedHabit}
         onClose={closeHabitSheet}
-        onDateToggle={toggleDateForHabit}
+        onDateToggle={handleToggleDateForHabit}
+        onEdit={handleEditFromSheet}
+        onDelete={handleDeleteFromSheet}
+        onCalendarGestureStart={handleCalendarGestureStart}
+        onCalendarGestureEnd={handleCalendarGestureEnd}
       />
 
-      {/* New Habit Sheet */}
       <NewHabitSheet
         visible={newHabitSheetVisible}
-        onClose={() => setNewHabitSheetVisible(false)}
-        onCreate={handleCreateHabit}
+        onClose={closeNewHabitSheet}
+        onCreate={handleSubmitHabit}
+        initialValues={editingHabit}
+      />
+
+      <ConfirmDialog
+        visible={!!deleteTarget}
+        title="Delete Habit"
+        message={
+          deleteTarget?.habit?.title
+            ? `Delete "${deleteTarget.habit.title}"?`
+            : "Delete this habit?"
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        destructive
+        onCancel={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
       />
     </SafeAreaView>
   );
@@ -153,26 +432,21 @@ export default function Anvil() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0D0D0D",
   },
   header: {
-    padding: 24,
-    paddingTop: 48,
+    paddingHorizontal: 24,
   },
   title: {
     fontSize: 32,
     fontFamily: "Inter_700Bold",
-    color: "#FFFFFF",
     marginBottom: 4,
   },
   date: {
     fontSize: 16,
     fontFamily: "Inter_400Regular",
-    color: "#8A8A8A",
   },
   progressCard: {
     marginHorizontal: 24,
-    backgroundColor: "#1A1A1A",
     borderRadius: 16,
     padding: 20,
     marginBottom: 24,
@@ -186,28 +460,23 @@ const styles = StyleSheet.create({
   progressNumber: {
     fontSize: 36,
     fontFamily: "Inter_700Bold",
-    color: "#FFB800",
   },
   progressLabel: {
     fontSize: 16,
     fontFamily: "Inter_400Regular",
-    color: "#8A8A8A",
   },
   progressBarContainer: {
     height: 8,
-    backgroundColor: "#333",
     borderRadius: 4,
     overflow: "hidden",
   },
   progressBar: {
     height: "100%",
-    backgroundColor: "#FFB800",
     borderRadius: 4,
   },
   progressPercent: {
     fontSize: 14,
     fontFamily: "Inter_500Medium",
-    color: "#8A8A8A",
     textAlign: "right",
     marginTop: 8,
   },
@@ -224,10 +493,8 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontFamily: "Inter_400Regular",
-    color: "#666",
     fontSize: 16,
   },
-  // removed search/input bar styles
   addButton: {
     position: "absolute",
     bottom: 32,
@@ -235,10 +502,8 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 12,
-    backgroundColor: "#FF6B35",
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 4,
@@ -250,6 +515,6 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontSize: 28,
     fontFamily: "Inter_600SemiBold",
-    color: "#FFFFFF",
   },
 });
+

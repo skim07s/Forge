@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { useTheme } from "../context/themeContext";
 
 const SPRING_CONFIG = {
   mass: 1.1,
@@ -26,43 +27,77 @@ const SPRING_CONFIG = {
   stiffness: 85,
 };
 
-export default function NewHabitSheet({ visible, onClose, onCreate }) {
+export default function NewHabitSheet({
+  visible,
+  onClose,
+  onCreate,
+  initialValues = null,
+}) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const closeTimeoutRef = useRef(null);
   const overlayOpacity = useSharedValue(0);
   const translateY = useSharedValue(500);
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+
+  const isEditMode = !!initialValues;
 
   useEffect(() => {
     if (visible) {
-      setTitle("");
-      setDescription("");
-      setReminderEnabled(false);
+      setTitle(initialValues?.title ?? "");
+      setDescription(initialValues?.description ?? "");
+      setReminderEnabled(!!initialValues?.reminderEnabled);
+      setIsSubmitting(false);
       translateY.value = withSpring(0, SPRING_CONFIG);
       overlayOpacity.value = withTiming(1, { duration: 200 });
     } else {
+      setIsSubmitting(false);
       translateY.value = 500;
       overlayOpacity.value = 0;
     }
-  }, [visible]);
+  }, [initialValues, visible]);
 
-  const handleCreate = () => {
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleCreate = async () => {
+    if (isSubmitting) return;
+
     const name = title.trim();
     if (!name) return;
+
+    setIsSubmitting(true);
     Keyboard.dismiss();
-    onCreate?.({
-      title: name,
-      description: description.trim(),
-      reminderEnabled,
-    });
+    try {
+      await onCreate?.({
+        title: name,
+        description: description.trim(),
+        reminderEnabled,
+      });
+    } catch {
+      setIsSubmitting(false);
+    }
   };
 
   const handleClose = () => {
     Keyboard.dismiss();
     translateY.value = withSpring(500, SPRING_CONFIG);
     overlayOpacity.value = withTiming(0, { duration: 200 });
-    setTimeout(onClose, 300);
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+    }
+    closeTimeoutRef.current = setTimeout(() => {
+      closeTimeoutRef.current = null;
+      onClose?.();
+    }, 300);
   };
 
   const overlayAnimatedStyle = useAnimatedStyle(() => ({
@@ -76,84 +111,117 @@ export default function NewHabitSheet({ visible, onClose, onCreate }) {
   if (!visible) return null;
 
   return (
-    <Modal transparent visible={visible} animationType="none">
-      <KeyboardAvoidingView 
-        style={styles.container} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    <Modal
+      transparent
+      visible={visible}
+      animationType="none"
+      onRequestClose={handleClose}
+    >
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        {/* Overlay */}
-        <Animated.View style={[styles.overlay, overlayAnimatedStyle]}>
+        <Animated.View
+          style={[styles.overlay, overlayAnimatedStyle, { backgroundColor: theme.overlay }]}
+        >
           <Pressable style={styles.overlayPressable} onPress={handleClose} />
         </Animated.View>
 
-        {/* Sheet */}
-        <Animated.View style={[styles.sheet, sheetAnimatedStyle]}>
-          {/* Handle */}
+        <Animated.View style={[styles.sheet, sheetAnimatedStyle, { backgroundColor: theme.surface }]}>
           <View style={styles.handleContainer}>
-            <View style={styles.handle} />
+            <View style={[styles.handle, { backgroundColor: theme.border }]} />
           </View>
 
-          {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>New Habit</Text>
-            <Pressable onPress={handleClose} style={styles.closeButton}>
-              <Text style={styles.closeText}>✕</Text>
+            <Text style={[styles.title, { color: theme.textPrimary }]}>
+              {isEditMode ? "Edit Habit" : "New Habit"}
+            </Text>
+            <Pressable
+              onPress={handleClose}
+              style={[styles.closeButton, { backgroundColor: theme.surfaceMuted }]}
+              accessibilityRole="button"
+              accessibilityLabel={isEditMode ? "Close edit habit form" : "Close new habit form"}
+              hitSlop={8}
+            >
+              <Text style={[styles.closeText, { color: theme.textSecondary }]}>✕</Text>
             </Pressable>
           </View>
 
-          {/* Scrollable Content */}
-          <ScrollView 
+          <ScrollView
             style={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.label}>Habit name</Text>
+            <Text style={[styles.label, { color: theme.textSecondary }]}>Habit name</Text>
             <TextInput
               autoFocus
               value={title}
               onChangeText={setTitle}
               placeholder="e.g. Morning run"
-              placeholderTextColor="#666"
-              style={styles.input}
+              placeholderTextColor={theme.inputPlaceholder}
+              style={[styles.input, { backgroundColor: theme.surfaceMuted, color: theme.textPrimary }]}
               returnKeyType="next"
+              accessibilityLabel="Habit name"
+              maxLength={120}
             />
 
-            <Text style={[styles.label, { marginTop: 16 }]}>Description</Text>
+            <Text style={[styles.label, { marginTop: 16, color: theme.textSecondary }]}>Description</Text>
             <TextInput
               value={description}
               onChangeText={setDescription}
               placeholder="Optional: add details about this habit"
-              placeholderTextColor="#666"
-              style={[styles.input, styles.textarea]}
+              placeholderTextColor={theme.inputPlaceholder}
+              style={[
+                styles.input,
+                styles.textarea,
+                { backgroundColor: theme.surfaceMuted, color: theme.textPrimary },
+              ]}
               multiline
+              accessibilityLabel="Habit description"
+              maxLength={500}
             />
 
-            <View style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>Set reminder</Text>
+            <View style={[styles.toggleRow, { backgroundColor: theme.surfaceMuted }]}>
+              <Text style={[styles.toggleLabel, { color: theme.textPrimary }]}>Set reminder</Text>
               <Switch
                 value={reminderEnabled}
                 onValueChange={setReminderEnabled}
-                trackColor={{ false: "#555", true: "#FF8A5A" }}
-                thumbColor={reminderEnabled ? "#FF6B35" : "#CCC"}
+                trackColor={{ false: theme.switchTrackOff, true: theme.switchTrackOn }}
+                thumbColor={reminderEnabled ? theme.switchThumbOn : theme.switchThumbOff}
               />
             </View>
           </ScrollView>
 
-          {/* Footer - Always visible above keyboard */}
           <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-            <Pressable style={[styles.button, styles.cancel]} onPress={handleClose}>
-              <Text style={styles.buttonText}>Cancel</Text>
+            <Pressable
+              style={[styles.button, styles.cancel, { backgroundColor: theme.surfaceMuted }]}
+              onPress={handleClose}
+              accessibilityRole="button"
+              accessibilityLabel={isEditMode ? "Cancel editing habit" : "Cancel new habit"}
+            >
+              <Text style={[styles.buttonText, { color: theme.textSecondary }]}>Cancel</Text>
             </Pressable>
             <Pressable
               style={[
                 styles.button,
                 styles.create,
+                { backgroundColor: theme.accent },
                 { opacity: title.trim() ? 1 : 0.6 },
               ]}
               onPress={handleCreate}
-              disabled={!title.trim()}
+              disabled={!title.trim() || isSubmitting}
+              accessibilityRole="button"
+              accessibilityLabel={isEditMode ? "Save habit changes" : "Create habit"}
             >
-              <Text style={[styles.buttonText, styles.createText]}>Create</Text>
+              <Text style={[styles.buttonText, styles.createText, { color: theme.textOnAccent }]}>
+                {isSubmitting
+                  ? isEditMode
+                    ? "Saving..."
+                    : "Creating..."
+                  : isEditMode
+                    ? "Save Changes"
+                    : "Create"}
+              </Text>
             </Pressable>
           </View>
         </Animated.View>
@@ -169,13 +237,11 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   overlayPressable: {
     flex: 1,
   },
   sheet: {
-    backgroundColor: "#1A1A1A",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 24,
@@ -188,7 +254,6 @@ const styles = StyleSheet.create({
   handle: {
     width: 40,
     height: 4,
-    backgroundColor: "#444",
     borderRadius: 2,
   },
   header: {
@@ -200,19 +265,16 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontFamily: "Inter_700Bold",
-    color: "#FFFFFF",
     flex: 1,
   },
   closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#333",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
   },
   closeText: {
-    color: "#888",
     fontSize: 16,
   },
   scrollContent: {
@@ -221,18 +283,15 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     fontFamily: "Inter_600SemiBold",
-    color: "#888",
     marginBottom: 8,
     textTransform: "uppercase",
     letterSpacing: 1,
   },
   input: {
-    backgroundColor: "#242424",
     borderRadius: 12,
     padding: 14,
     fontSize: 16,
     fontFamily: "Inter_400Regular",
-    color: "#FFFFFF",
   },
   textarea: {
     minHeight: 84,
@@ -241,7 +300,6 @@ const styles = StyleSheet.create({
   toggleRow: {
     marginTop: 16,
     marginBottom: 16,
-    backgroundColor: "#242424",
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -252,7 +310,6 @@ const styles = StyleSheet.create({
   toggleLabel: {
     fontSize: 16,
     fontFamily: "Inter_500Medium",
-    color: "#FFFFFF",
   },
   footer: {
     flexDirection: "row",
@@ -267,19 +324,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  cancel: {
-    backgroundColor: "#2A2A2A",
-  },
-  create: {
-    backgroundColor: "#FF6B35",
-  },
+  cancel: {},
+  create: {},
   buttonText: {
     fontFamily: "Inter_600SemiBold",
-    color: "#FFFFFF",
     fontSize: 16,
   },
-  createText: {
-    color: "#FFFFFF",
-  },
+  createText: {},
 });
 

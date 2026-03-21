@@ -18,6 +18,18 @@ export const MONTHS = [
   "December",
 ];
 
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+const parseDateInput = (value) => {
+  if (typeof value === "string" && DATE_PATTERN.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+};
+
 /**
  * Get today's date in YYYY-MM-DD format (local time)
  */
@@ -40,13 +52,13 @@ export const formatDate = (date) => {
  * Format a date string to a readable format
  */
 export const formatDateReadable = (dateStr) => {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString("en-US", {
+  const date = parseDateInput(dateStr);
+  return new Intl.DateTimeFormat(undefined, {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
-  });
+  }).format(date);
 };
 
 /**

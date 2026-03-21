@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   View,
   StyleSheet,
@@ -18,6 +18,7 @@ import Animated, {
   runOnJS,
 } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { useTheme } from "../context/themeContext";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const DISMISS_THRESHOLD = 150;
@@ -35,14 +36,15 @@ export default function BottomSheet({
   children,
   maxHeight = 0.85,
 }) {
+  const openTimeoutRef = useRef(null);
+  const closeTimeoutRef = useRef(null);
+  const { theme } = useTheme();
+
   // Shared Values
   const translateY = useSharedValue(SCREEN_HEIGHT);
   const keyboardOffset = useSharedValue(0);
   const overlayOpacity = useSharedValue(0);
   const context = useSharedValue({ y: 0 });
-  
-  // Track keyboard state
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   // Keyboard listeners
   useEffect(() => {
@@ -50,7 +52,6 @@ export default function BottomSheet({
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
         const height = e.endCoordinates.height;
-        setKeyboardVisible(true);
         // Animate sheet up with spring - use full height minus some padding
         keyboardOffset.value = withSpring(-height + 20, SPRING_CONFIG);
       }
@@ -59,7 +60,6 @@ export default function BottomSheet({
     const hideSubscription = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
-        setKeyboardVisible(false);
         // Animate sheet back down with spring
         keyboardOffset.value = withSpring(0, SPRING_CONFIG);
       }
@@ -85,8 +85,12 @@ export default function BottomSheet({
       // Reset position first
       translateY.value = SCREEN_HEIGHT;
       keyboardOffset.value = 0;
+      if (openTimeoutRef.current) {
+        clearTimeout(openTimeoutRef.current);
+      }
       // Small delay to ensure reset, then animate open with spring
-      setTimeout(() => {
+      openTimeoutRef.current = setTimeout(() => {
+        openTimeoutRef.current = null;
         translateY.value = withSpring(0, SPRING_CONFIG);
         overlayOpacity.value = withTiming(1, { duration: 200 });
       }, 10);
@@ -98,14 +102,29 @@ export default function BottomSheet({
     }
   }, [visible]);
 
+  useEffect(() => {
+    return () => {
+      if (openTimeoutRef.current) {
+        clearTimeout(openTimeoutRef.current);
+      }
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const dismiss = () => {
     // Dismiss keyboard first
     Keyboard.dismiss();
     // Close animation with same spring config
     translateY.value = withSpring(SCREEN_HEIGHT, SPRING_CONFIG);
     overlayOpacity.value = withTiming(0, { duration: 200 });
-    setTimeout(() => {
-      onClose();
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+    }
+    closeTimeoutRef.current = setTimeout(() => {
+      closeTimeoutRef.current = null;
+      onClose?.();
     }, 300);
   };
 
@@ -145,15 +164,27 @@ export default function BottomSheet({
   if (!visible) return null;
 
   return (
-    <Modal transparent visible={visible} animationType="none">
+    <Modal
+      transparent
+      visible={visible}
+      animationType="none"
+      onRequestClose={dismiss}
+    >
       <KeyboardAvoidingView 
         style={styles.modalContainer} 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
         {/* Overlay */}
-        <Animated.View style={[styles.overlay, overlayAnimatedStyle]}>
-          <Pressable style={styles.overlayPressable} onPress={dismiss} />
+        <Animated.View
+          style={[styles.overlay, overlayAnimatedStyle, { backgroundColor: theme.overlay }]}
+        >
+          <Pressable
+            style={styles.overlayPressable}
+            onPress={dismiss}
+            accessibilityRole="button"
+            accessibilityLabel="Close sheet"
+          />
         </Animated.View>
 
         {/* Sheet */}
@@ -161,13 +192,13 @@ export default function BottomSheet({
           <Animated.View
             style={[
               styles.sheet,
-              { maxHeight: SCREEN_HEIGHT * maxHeight },
+              { maxHeight: SCREEN_HEIGHT * maxHeight, backgroundColor: theme.surface },
               sheetAnimatedStyle,
             ]}
           >
             {/* Handle */}
             <View style={styles.handleContainer}>
-              <View style={styles.handle} />
+              <View style={[styles.handle, { backgroundColor: theme.border }]} />
             </View>
 
             {/* Content - wrapped in ScrollView for keyboard */}
@@ -182,7 +213,7 @@ export default function BottomSheet({
             </ScrollView>
 
             {/* Bottom Extension to fill gap */}
-            <View style={styles.bottomExtension} />
+            <View style={[styles.bottomExtension, { backgroundColor: theme.surface }]} />
           </Animated.View>
         </GestureDetector>
       </KeyboardAvoidingView>
@@ -197,13 +228,11 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   overlayPressable: {
     flex: 1,
   },
   sheet: {
-    backgroundColor: "#1A1A1A",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 24,
@@ -217,7 +246,6 @@ const styles = StyleSheet.create({
   handle: {
     width: 40,
     height: 4,
-    backgroundColor: "#444",
     borderRadius: 2,
   },
   scrollContent: {
@@ -232,6 +260,5 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 200,
-    backgroundColor: "#1A1A1A",
   },
 });

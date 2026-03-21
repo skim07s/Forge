@@ -7,6 +7,7 @@ import * as Sharing from "expo-sharing";
 import { useHabitStore } from "../context/habitStore";
 import { useIngotStore } from "../context/ingotStore";
 import { useTheme } from "../context/themeContext";
+import { useShallow } from "zustand/react/shallow";
 import { buildExportData, normalizeImportData } from "../utils/dataTransfer";
 import { triggerBubblePopHaptic } from "../utils/haptics";
 
@@ -20,10 +21,18 @@ const truncateText = (value, maxLength) => {
 };
 
 export default function Settings() {
-  const habits = useHabitStore((state) => state.habits);
-  const setHabits = useHabitStore((state) => state.setHabits);
-  const ingots = useIngotStore((state) => state.ingots);
-  const setIngots = useIngotStore((state) => state.setIngots);
+  const { habits, setHabits } = useHabitStore(
+    useShallow((state) => ({
+      habits: state.habits,
+      setHabits: state.setHabits,
+    }))
+  );
+  const { ingots, setIngots } = useIngotStore(
+    useShallow((state) => ({
+      ingots: state.ingots,
+      setIngots: state.setIngots,
+    }))
+  );
   const { theme, themeId, setThemeId, themeOptions } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -155,12 +164,9 @@ export default function Settings() {
               accessibilityLabel={`Apply ${option.name} theme`}
             >
               <View style={[styles.themeDot, { backgroundColor: option.previewColor }]} />
-              <View style={styles.dialogThemeTextWrap}>
-                <Text style={[styles.dialogThemeName, { color: selected ? theme.accentStrong : theme.textPrimary }]}>
-                  {option.name}
-                </Text>
-                <Text style={[styles.dialogThemeDescription, { color: theme.textSecondary }]}>{option.description}</Text>
-              </View>
+              <Text style={[styles.dialogThemeName, { color: selected ? theme.accentStrong : theme.textPrimary }]}>
+                {option.name}
+              </Text>
               {selected ? <Text style={[styles.dialogThemeSelectedMark, { color: theme.accentStrong }]}>✓</Text> : null}
             </Pressable>
           );
@@ -187,10 +193,54 @@ export default function Settings() {
     </>
   );
 
-  const renderActionDialog = (title, description, confirmText, onConfirm, busyKey) => (
+  const renderBackupDialog = () => (
     <>
-      <Text style={[styles.dialogTitle, { color: theme.textPrimary }]}>{title}</Text>
-      <Text style={[styles.dialogDescription, { color: theme.textSecondary }]}>{description}</Text>
+      <Text style={[styles.dialogTitle, { color: theme.textPrimary }]}>Backup</Text>
+      <Text style={[styles.dialogDescription, { color: theme.textSecondary }]}>Export your data to JSON or restore from a backup file.</Text>
+
+      <View style={styles.backupActionList}>
+        <Pressable
+          style={[
+            styles.backupActionButton,
+            {
+              backgroundColor: theme.accent,
+            },
+            busyAction && styles.buttonDisabled,
+          ]}
+          onPress={async () => {
+            closeDialog();
+            await handleExport();
+          }}
+          disabled={!!busyAction}
+          accessibilityRole="button"
+          accessibilityLabel="Export backup JSON"
+        >
+          <Text style={[styles.backupActionButtonText, { color: theme.textOnAccent }]}>
+            {busyAction === "export" ? "Exporting..." : "Export JSON"}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[
+            styles.backupActionButton,
+            {
+              backgroundColor: theme.success,
+            },
+            busyAction && styles.buttonDisabled,
+          ]}
+          onPress={async () => {
+            closeDialog();
+            await handleImport();
+          }}
+          disabled={!!busyAction}
+          accessibilityRole="button"
+          accessibilityLabel="Import backup JSON"
+        >
+          <Text style={[styles.backupActionButtonText, { color: theme.textOnAccent }]}>
+            {busyAction === "import" ? "Importing..." : "Import JSON"}
+          </Text>
+        </Pressable>
+      </View>
 
       <View style={styles.dialogActions}>
         <Pressable
@@ -204,28 +254,9 @@ export default function Settings() {
           ]}
           onPress={closeDialog}
           accessibilityRole="button"
-          accessibilityLabel="Cancel"
+          accessibilityLabel="Close backup dialog"
         >
-          <Text style={[styles.dialogSecondaryButtonText, { color: theme.textSecondary }]}>Cancel</Text>
-        </Pressable>
-
-        <Pressable
-          style={[
-            styles.dialogButton,
-            styles.dialogPrimaryButton,
-            {
-              backgroundColor: theme.accent,
-            },
-            busyAction && styles.buttonDisabled,
-          ]}
-          onPress={onConfirm}
-          disabled={!!busyAction}
-          accessibilityRole="button"
-          accessibilityLabel={confirmText}
-        >
-          <Text style={[styles.dialogPrimaryButtonText, { color: theme.textOnAccent }]}>
-            {busyAction === busyKey ? `${confirmText}...` : confirmText}
-          </Text>
+          <Text style={[styles.dialogSecondaryButtonText, { color: theme.textSecondary }]}>Close</Text>
         </Pressable>
       </View>
     </>
@@ -233,33 +264,7 @@ export default function Settings() {
 
   const renderDialogContent = () => {
     if (dialogType === "theme") return renderThemeDialog();
-
-    if (dialogType === "export") {
-      return renderActionDialog(
-        "Export JSON",
-        "Create a backup of your habits and ingots as a JSON file you can share or store.",
-        "Export",
-        async () => {
-          closeDialog();
-          await handleExport();
-        },
-        "export"
-      );
-    }
-
-    if (dialogType === "import") {
-      return renderActionDialog(
-        "Import JSON",
-        "Restore habits and ingots from a JSON backup file. This replaces current local data.",
-        "Import",
-        async () => {
-          closeDialog();
-          await handleImport();
-        },
-        "import"
-      );
-    }
-
+    if (dialogType === "backup") return renderBackupDialog();
     return null;
   };
 
@@ -302,35 +307,14 @@ export default function Settings() {
               },
               busyAction && styles.tileDisabled,
             ]}
-            onPress={() => openDialog("export")}
+            onPress={() => openDialog("backup")}
             disabled={!!busyAction}
             accessibilityRole="button"
-            accessibilityLabel="Open export data action"
+            accessibilityLabel="Open backup options"
           >
             <View style={styles.tileTextWrap}>
-              <Text style={[styles.tileTitle, { color: theme.textPrimary }]}>Export Data</Text>
-              <Text style={[styles.tileSubtitle, { color: theme.textSecondary }]}>Save habits and ingots as JSON.</Text>
-            </View>
-            <Text style={[styles.tileChevron, { color: theme.textMuted }]}>›</Text>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.tile,
-              {
-                backgroundColor: theme.surface,
-                borderColor: theme.border,
-              },
-              busyAction && styles.tileDisabled,
-            ]}
-            onPress={() => openDialog("import")}
-            disabled={!!busyAction}
-            accessibilityRole="button"
-            accessibilityLabel="Open import data action"
-          >
-            <View style={styles.tileTextWrap}>
-              <Text style={[styles.tileTitle, { color: theme.textPrimary }]}>Import Data</Text>
-              <Text style={[styles.tileSubtitle, { color: theme.textSecondary }]}>Restore data from a JSON backup file.</Text>
+              <Text style={[styles.tileTitle, { color: theme.textPrimary }]}>Backup</Text>
+              <Text style={[styles.tileSubtitle, { color: theme.textSecondary }]}>Import and export from a single backup panel.</Text>
             </View>
             <Text style={[styles.tileChevron, { color: theme.textMuted }]}>›</Text>
           </Pressable>
@@ -469,21 +453,29 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
   },
-  dialogThemeTextWrap: {
-    flex: 1,
-  },
   dialogThemeName: {
+    flex: 1,
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
-  },
-  dialogThemeDescription: {
-    marginTop: 2,
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
   },
   dialogThemeSelectedMark: {
     fontSize: 16,
     fontFamily: "Inter_700Bold",
+  },
+  backupActionList: {
+    marginTop: 14,
+    gap: 10,
+  },
+  backupActionButton: {
+    minHeight: 44,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 14,
+  },
+  backupActionButtonText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   dialogActions: {
     marginTop: 16,
@@ -492,7 +484,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   dialogButton: {
-    height: 40,
+    minHeight: 44,
     borderRadius: 10,
     paddingHorizontal: 14,
     justifyContent: "center",
@@ -501,12 +493,7 @@ const styles = StyleSheet.create({
   dialogSecondaryButton: {
     borderWidth: 1,
   },
-  dialogPrimaryButton: {},
   dialogSecondaryButtonText: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
-  dialogPrimaryButtonText: {
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
   },
@@ -514,5 +501,3 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
 });
-
-

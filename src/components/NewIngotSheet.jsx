@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { useTheme } from "../context/themeContext";
 
 const SPRING_CONFIG = {
   mass: 1.1,
@@ -24,36 +25,66 @@ const SPRING_CONFIG = {
   stiffness: 85,
 };
 
-export default function NewIngotSheet({ visible, onClose, onCreate }) {
+export default function NewIngotSheet({ visible, onClose, onCreate, initialTitle = "" }) {
   const [title, setTitle] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const closeTimeoutRef = useRef(null);
   const overlayOpacity = useSharedValue(0);
   const translateY = useSharedValue(500);
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+
+  const isEditMode = !!initialTitle;
 
   useEffect(() => {
     if (visible) {
-      setTitle("");
+      setTitle(initialTitle ?? "");
+      setIsSubmitting(false);
       translateY.value = withSpring(0, SPRING_CONFIG);
       overlayOpacity.value = withTiming(1, { duration: 200 });
     } else {
+      setIsSubmitting(false);
       translateY.value = 500;
       overlayOpacity.value = 0;
     }
-  }, [visible]);
+  }, [initialTitle, visible]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleCreate = () => {
-    if (!title.trim()) return;
+    if (isSubmitting) return;
+
+    const nextTitle = title.trim();
+    if (!nextTitle) return;
+
+    setIsSubmitting(true);
     Keyboard.dismiss();
-    onCreate(title);
-    setTitle("");
-    handleClose();
+    try {
+      onCreate(nextTitle);
+      setTitle("");
+      handleClose();
+    } catch {
+      setIsSubmitting(false);
+    }
   };
 
   const handleClose = () => {
     Keyboard.dismiss();
     translateY.value = withSpring(500, SPRING_CONFIG);
     overlayOpacity.value = withTiming(0, { duration: 200 });
-    setTimeout(onClose, 300);
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+    }
+    closeTimeoutRef.current = setTimeout(() => {
+      closeTimeoutRef.current = null;
+      onClose?.();
+    }, 300);
   };
 
   const overlayAnimatedStyle = useAnimatedStyle(() => ({
@@ -67,52 +98,79 @@ export default function NewIngotSheet({ visible, onClose, onCreate }) {
   if (!visible) return null;
 
   return (
-    <Modal transparent visible={visible} animationType="none">
-      <KeyboardAvoidingView 
-        style={styles.container} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    <Modal
+      transparent
+      visible={visible}
+      animationType="none"
+      onRequestClose={handleClose}
+    >
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        {/* Overlay */}
-        <Animated.View style={[styles.overlay, overlayAnimatedStyle]}>
+        <Animated.View
+          style={[styles.overlay, overlayAnimatedStyle, { backgroundColor: theme.overlay }]}
+        >
           <Pressable style={styles.overlayPressable} onPress={handleClose} />
         </Animated.View>
 
-        {/* Sheet */}
-        <Animated.View style={[styles.sheet, sheetAnimatedStyle]}>
-          {/* Handle */}
+        <Animated.View style={[styles.sheet, sheetAnimatedStyle, { backgroundColor: theme.surface }]}>
           <View style={styles.handleContainer}>
-            <View style={styles.handle} />
+            <View style={[styles.handle, { backgroundColor: theme.border }]} />
           </View>
 
-          {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>New Task</Text>
-            <Pressable onPress={handleClose} style={styles.closeButton}>
-              <Text style={styles.closeText}>✕</Text>
+            <Text style={[styles.title, { color: theme.textPrimary }]}>
+              {isEditMode ? "Edit Task" : "New Task"}
+            </Text>
+            <Pressable
+              onPress={handleClose}
+              style={[styles.closeButton, { backgroundColor: theme.surfaceMuted }]}
+              accessibilityRole="button"
+              accessibilityLabel={isEditMode ? "Close edit task form" : "Close new task form"}
+              hitSlop={8}
+            >
+              <Text style={[styles.closeText, { color: theme.textSecondary }]}>✕</Text>
             </Pressable>
           </View>
 
-          {/* Content */}
           <View style={styles.content}>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: theme.surfaceMuted, color: theme.textPrimary }]}
               placeholder="What needs to be done?"
-              placeholderTextColor="#666"
+              placeholderTextColor={theme.inputPlaceholder}
               value={title}
               onChangeText={setTitle}
               autoFocus={visible}
               returnKeyType="done"
               onSubmitEditing={handleCreate}
+              accessibilityLabel="Task title"
+              maxLength={160}
             />
           </View>
 
-          {/* Footer - Always visible above keyboard */}
           <Pressable
-            style={[styles.createButton, !title.trim() && styles.disabledButton, { marginBottom: insets.bottom + 16 }]}
+            style={[
+              styles.createButton,
+              { backgroundColor: theme.accent },
+              !title.trim() && styles.disabledButton,
+              !title.trim() && { backgroundColor: theme.surfaceMuted },
+              { marginBottom: insets.bottom + 16 },
+            ]}
             onPress={handleCreate}
-            disabled={!title.trim()}
+            disabled={!title.trim() || isSubmitting}
+            accessibilityRole="button"
+            accessibilityLabel={isEditMode ? "Save task changes" : "Add task to ingot list"}
           >
-            <Text style={styles.createButtonText}>Add to Ingot List</Text>
+            <Text style={[styles.createButtonText, { color: theme.textOnAccent }]}>
+              {isSubmitting
+                ? isEditMode
+                  ? "Saving..."
+                  : "Adding..."
+                : isEditMode
+                  ? "Save Changes"
+                  : "Add to Ingot List"}
+            </Text>
           </Pressable>
         </Animated.View>
       </KeyboardAvoidingView>
@@ -127,13 +185,11 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   overlayPressable: {
     flex: 1,
   },
   sheet: {
-    backgroundColor: "#1A1A1A",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 24,
@@ -145,57 +201,47 @@ const styles = StyleSheet.create({
   handle: {
     width: 40,
     height: 4,
-    backgroundColor: "#444",
     borderRadius: 2,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
   },
   title: {
     fontSize: 20,
-    fontFamily: 'Inter_700Bold',
-    color: '#FFFFFF',
+    fontFamily: "Inter_700Bold",
   },
   closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#333',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
   },
   closeText: {
-    color: '#888',
     fontSize: 16,
   },
   content: {
     marginBottom: 16,
   },
   input: {
-    backgroundColor: '#242424',
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: '#FFFFFF',
-    fontFamily: 'Inter_400Regular',
+    fontFamily: "Inter_400Regular",
   },
   createButton: {
-    backgroundColor: '#FF6B35',
     borderRadius: 12,
     height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 16,
   },
-  disabledButton: {
-    backgroundColor: '#333',
-  },
+  disabledButton: {},
   createButtonText: {
-    color: '#FFFFFF',
     fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: "Inter_600SemiBold",
   },
 });
