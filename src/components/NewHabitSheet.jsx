@@ -26,6 +26,30 @@ const SPRING_CONFIG = {
   damping: 14,
   stiffness: 85,
 };
+const WEEKDAY_OPTIONS = [
+  { id: 0, label: "Su", fullLabel: "Sunday" },
+  { id: 1, label: "M", fullLabel: "Monday" },
+  { id: 2, label: "Tu", fullLabel: "Tuesday" },
+  { id: 3, label: "W", fullLabel: "Wednesday" },
+  { id: 4, label: "Th", fullLabel: "Thursday" },
+  { id: 5, label: "F", fullLabel: "Friday" },
+  { id: 6, label: "Sa", fullLabel: "Saturday" },
+];
+const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
+
+const normalizeActiveWeekdays = (values) => {
+  const normalized = Array.from(
+    new Set(
+      Array.isArray(values)
+        ? values
+            .map((value) => Number(value))
+            .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)
+        : []
+    )
+  ).sort((a, b) => a - b);
+
+  return normalized.length > 0 ? normalized : [...ALL_WEEKDAYS];
+};
 
 export default function NewHabitSheet({
   visible,
@@ -36,6 +60,7 @@ export default function NewHabitSheet({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [activeWeekdays, setActiveWeekdays] = useState([...ALL_WEEKDAYS]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const closeTimeoutRef = useRef(null);
   const overlayOpacity = useSharedValue(0);
@@ -50,6 +75,7 @@ export default function NewHabitSheet({
       setTitle(initialValues?.title ?? "");
       setDescription(initialValues?.description ?? "");
       setReminderEnabled(!!initialValues?.reminderEnabled);
+      setActiveWeekdays(normalizeActiveWeekdays(initialValues?.activeWeekdays));
       setIsSubmitting(false);
       translateY.value = withSpring(0, SPRING_CONFIG);
       overlayOpacity.value = withTiming(1, { duration: 200 });
@@ -81,10 +107,20 @@ export default function NewHabitSheet({
         title: name,
         description: description.trim(),
         reminderEnabled,
+        activeWeekdays: normalizeActiveWeekdays(activeWeekdays),
       });
     } catch {
       setIsSubmitting(false);
     }
+  };
+
+  const toggleWeekday = (weekdayId) => {
+    setActiveWeekdays((prev) => {
+      const hasDay = prev.includes(weekdayId);
+      if (hasDay && prev.length === 1) return prev;
+      if (hasDay) return prev.filter((day) => day !== weekdayId);
+      return [...prev, weekdayId].sort((a, b) => a - b);
+    });
   };
 
   const handleClose = () => {
@@ -180,6 +216,43 @@ export default function NewHabitSheet({
               accessibilityLabel="Habit description"
               maxLength={500}
             />
+
+            <Text style={[styles.label, { marginTop: 16, color: theme.textSecondary }]}>
+              Active days
+            </Text>
+            <View style={styles.weekdayRow}>
+              {WEEKDAY_OPTIONS.map((option) => {
+                const selected = activeWeekdays.includes(option.id);
+                return (
+                  <Pressable
+                    key={`${option.id}-${option.fullLabel}`}
+                    style={[
+                      styles.weekdayChip,
+                      {
+                        backgroundColor: selected ? theme.accentStrong : theme.surfaceMuted,
+                        borderColor: selected ? theme.accentStrong : theme.border,
+                      },
+                    ]}
+                    onPress={() => toggleWeekday(option.id)}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={`Active on ${option.fullLabel}`}
+                    accessibilityState={{ checked: selected }}
+                  >
+                    <Text
+                      style={[
+                        styles.weekdayChipText,
+                        { color: selected ? theme.textOnAccent : theme.textPrimary },
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={[styles.helperText, { color: theme.textMuted }]}>
+              Select the days this habit should be done. At least one day is required.
+            </Text>
 
             <View style={[styles.toggleRow, { backgroundColor: theme.surfaceMuted }]}>
               <Text style={[styles.toggleLabel, { color: theme.textPrimary }]}>Set reminder</Text>
@@ -296,6 +369,30 @@ const styles = StyleSheet.create({
   textarea: {
     minHeight: 84,
     textAlignVertical: "top",
+  },
+  weekdayRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  weekdayChip: {
+    minWidth: 40,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 8,
+  },
+  weekdayChipText: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+  },
+  helperText: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: "Inter_400Regular",
   },
   toggleRow: {
     marginTop: 16,

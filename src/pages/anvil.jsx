@@ -12,7 +12,7 @@ import HabitCard from "../components/HabitCard";
 import HabitSheet from "../components/HabitSheet";
 import NewHabitSheet from "../components/NewHabitSheet";
 import ConfirmDialog from "../components/ConfirmDialog";
-import { useHabitStore } from "../context/habitStore";
+import { STREAK_FREEZE_GEM_COST, useHabitStore } from "../context/habitStore";
 import { useTheme } from "../context/themeContext";
 import { useShallow } from "zustand/react/shallow";
 import { triggerBubblePopHaptic } from "../utils/haptics";
@@ -23,6 +23,7 @@ import {
 
 const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 const CHECK_DAY_CHANGE_INTERVAL_MS = 60000;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const getIsoDate = (date = new Date()) => {
   const year = date.getFullYear();
@@ -31,24 +32,45 @@ const getIsoDate = (date = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
+const isHabitScheduledOnDate = (habit, dateStr) => {
+  if (!habit || typeof dateStr !== "string" || !DATE_PATTERN.test(dateStr)) {
+    return false;
+  }
+
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const weekday = new Date(year, month - 1, day).getDay();
+  const weekdays =
+    Array.isArray(habit.activeWeekdays) && habit.activeWeekdays.length
+      ? habit.activeWeekdays
+      : [0, 1, 2, 3, 4, 5, 6];
+
+  return weekdays.includes(weekday);
+};
+
 export default function Anvil({ onPagerSwipeLockChange }) {
   const {
     habits,
+    gems,
     addHabit,
     updateHabit,
     setHabitReminderNotificationId,
     deleteHabit,
     toggleHabit,
     toggleDateForHabit,
+    useFreezeForHabit,
+    removeFreezeForHabit,
   } = useHabitStore(
     useShallow((state) => ({
       habits: state.habits,
+      gems: state.gems,
       addHabit: state.addHabit,
       updateHabit: state.updateHabit,
       setHabitReminderNotificationId: state.setHabitReminderNotificationId,
       deleteHabit: state.deleteHabit,
       toggleHabit: state.toggleHabit,
       toggleDateForHabit: state.toggleDateForHabit,
+      useFreezeForHabit: state.useFreezeForHabit,
+      removeFreezeForHabit: state.removeFreezeForHabit,
     }))
   );
   const { theme } = useTheme();
@@ -240,6 +262,8 @@ export default function Anvil({ onPagerSwipeLockChange }) {
       const today = getIsoDate();
       const habit = useHabitStore.getState().habits.find((h) => h.id === id);
       const wasCompleted = habit?.completedDates?.includes(today);
+      const isScheduledToday = isHabitScheduledOnDate(habit, today);
+      if (!isScheduledToday && !wasCompleted) return;
 
       toggleHabit(id);
 
@@ -254,6 +278,8 @@ export default function Anvil({ onPagerSwipeLockChange }) {
     (id, dateStr) => {
       const habit = useHabitStore.getState().habits.find((h) => h.id === id);
       const wasCompleted = habit?.completedDates?.includes(dateStr);
+      const isScheduledDate = isHabitScheduledOnDate(habit, dateStr);
+      if (!isScheduledDate && !wasCompleted) return;
 
       toggleDateForHabit(id, dateStr);
 
@@ -262,6 +288,69 @@ export default function Anvil({ onPagerSwipeLockChange }) {
       }
     },
     [toggleDateForHabit]
+  );
+
+  const handleManualFreeze = useCallback(
+    (habitId) => {
+      const result = useFreezeForHabit(habitId);
+      if (result?.ok) {
+        void triggerBubblePopHaptic();
+        Alert.alert(
+          "Streak Protected",
+          `Used ${STREAK_FREEZE_GEM_COST} gems to freeze yesterday.`
+        );
+        return;
+      }
+
+      const reason = result?.reason;
+      if (reason === "insufficient_gems") {
+        Alert.alert(
+          "Not enough gems",
+          `You need at least ${STREAK_FREEZE_GEM_COST} gems to use a freeze.`
+        );
+        return;
+      }
+
+      if (reason === "already_frozen") {
+        Alert.alert("Freeze already used", "Yesterday is already protected for this habit.");
+        return;
+      }
+
+      if (reason === "no_missed_day") {
+        Alert.alert("Nothing to freeze", "You did not miss yesterday for this habit.");
+        return;
+      }
+
+      if (reason === "no_active_streak") {
+        Alert.alert("Freeze unavailable", "A freeze needs an active streak from earlier days.");
+        return;
+      }
+
+      Alert.alert("Freeze unavailable", "Unable to apply freeze right now.");
+    },
+    [useFreezeForHabit]
+  );
+
+  const handleRemoveFreeze = useCallback(
+    (habitId) => {
+      const result = removeFreezeForHabit(habitId);
+      if (result?.ok) {
+        void triggerBubblePopHaptic();
+        Alert.alert(
+          "Freeze Removed",
+          `Removed yesterday's freeze and refunded ${STREAK_FREEZE_GEM_COST} gems.`
+        );
+        return;
+      }
+
+      if (result?.reason === "no_freeze") {
+        Alert.alert("No freeze found", "Yesterday is not frozen for this habit.");
+        return;
+      }
+
+      Alert.alert("Remove failed", "Unable to remove freeze right now.");
+    },
+    [removeFreezeForHabit]
   );
 
   const completedCount = useMemo(
@@ -341,11 +430,38 @@ export default function Anvil({ onPagerSwipeLockChange }) {
       edges={["left", "right"]}
     >
       <View style={[styles.header, headerTopPadding]}>
-        <Text style={[styles.title, { color: theme.textPrimary }]}>The Anvil</Text>
+        <View style={styles.headerTopRow}>
+          <Text style={[styles.title, { color: theme.textPrimary }]}>The Anvil</Text>
+          <View
+            style={[
+              styles.gemBadge,
+              {
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
+                shadowColor: theme.shadow,
+              },
+            ]}
+          >
+            <Text style={[styles.gemIcon, { color: theme.accentStrong }]}>G</Text>
+            <Text style={[styles.gemCount, { color: theme.textPrimary }]}>{gems}</Text>
+          </View>
+        </View>
         <Text style={[styles.date, { color: theme.textSecondary }]}>{currentDateLabel}</Text>
       </View>
 
-      <View style={[styles.progressCard, { backgroundColor: theme.surface }]}>
+      <View
+        style={[
+          styles.progressCard,
+          {
+            backgroundColor: theme.surface,
+            shadowColor: theme.shadow,
+            shadowOffset: { width: 0, height: 3 },
+            shadowOpacity: 0.16,
+            shadowRadius: 6,
+            elevation: 4,
+          },
+        ]}
+      >
         <View style={styles.progressInfo}>
           <Text style={[styles.progressNumber, { color: theme.accentStrong }]}>
             {completedCount}/{totalCount}
@@ -396,10 +512,13 @@ export default function Anvil({ onPagerSwipeLockChange }) {
       <HabitSheet
         visible={sheetVisible}
         habit={selectedHabit}
+        gems={gems}
         onClose={closeHabitSheet}
         onDateToggle={handleToggleDateForHabit}
         onEdit={handleEditFromSheet}
         onDelete={handleDeleteFromSheet}
+        onManualFreeze={handleManualFreeze}
+        onRemoveFreeze={handleRemoveFreeze}
         onCalendarGestureStart={handleCalendarGestureStart}
         onCalendarGestureEnd={handleCalendarGestureEnd}
       />
@@ -436,10 +555,38 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 24,
   },
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
   title: {
     fontSize: 32,
     fontFamily: "Inter_700Bold",
-    marginBottom: 4,
+  },
+  gemBadge: {
+    minWidth: 70,
+    height: 34,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  gemIcon: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+  },
+  gemCount: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
   },
   date: {
     fontSize: 16,

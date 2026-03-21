@@ -9,8 +9,19 @@ import Animated, {
   withSequence,
 } from "react-native-reanimated";
 import { useTheme } from "../context/themeContext";
+import StreakFreezeIcon from "./StreakFreezeIcon";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
+const FROZEN_DAY_ICON_SIZE = 40;
+const OFF_DAY_BACKGROUND = "rgba(232, 90, 90, 0.18)";
+
+const getWeekdayFromDate = (dateStr) => {
+  if (typeof dateStr !== "string" || !DATE_PATTERN.test(dateStr)) return null;
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day).getDay();
+};
 
 // Animated Button Component with bounce effect
 function AnimatedButton({ style, onPress, children, disabled, ...rest }) {
@@ -55,18 +66,43 @@ function HabitCard({
   onDateToggle,
   weekDates = [],
 }) {
-  const { id, title, streak, completedToday, completedDates = [] } = habit;
+  const {
+    id,
+    title,
+    streak,
+    completedToday,
+    completedDates = [],
+    frozenDates = [],
+    activeWeekdays = ALL_WEEKDAYS,
+  } = habit;
   const { theme } = useTheme();
   const completedDateSet = useMemo(
     () => new Set(completedDates),
     [completedDates]
+  );
+  const frozenDateSet = useMemo(() => new Set(frozenDates), [frozenDates]);
+  const activeWeekdaySet = useMemo(
+    () =>
+      new Set(
+        Array.isArray(activeWeekdays) && activeWeekdays.length
+          ? activeWeekdays
+          : ALL_WEEKDAYS
+      ),
+    [activeWeekdays]
   );
 
   return (
     <View
       style={[
         styles.container,
-        { backgroundColor: theme.surface },
+        {
+          backgroundColor: theme.surface,
+          shadowColor: theme.shadow,
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.16,
+          shadowRadius: 6,
+          elevation: 4,
+        },
         completedToday && styles.containerCompleted,
       ]}
     >
@@ -138,42 +174,74 @@ function HabitCard({
         {/* Week Calendar */}
         <View style={styles.weekCalendar}>
           {weekDates.map((day) => {
-            const isCompleted = completedDateSet.has(day.date);
+            const weekday = getWeekdayFromDate(day.date);
+            const isScheduled = weekday === null ? true : activeWeekdaySet.has(weekday);
+            const isCompleted = isScheduled && completedDateSet.has(day.date);
+            const isFrozen = isScheduled && !isCompleted && frozenDateSet.has(day.date);
             return (
               <View
                 key={day.date}
-                style={[styles.dayContainer, day.isFuture && { opacity: 0.3 }]}
+                style={[
+                  styles.dayContainer,
+                  day.isFuture && { opacity: 0.3 },
+                  !isScheduled && { opacity: day.isFuture ? 0.35 : 1 },
+                ]}
               >
-                <Text style={[styles.dayName, { color: theme.textMuted }]}>{day.dayName}</Text>
+                <Text
+                  style={[
+                    styles.dayName,
+                    { color: theme.textMuted },
+                    !isScheduled && { color: theme.error },
+                  ]}
+                >
+                  {day.dayName}
+                </Text>
                 {/* Date button with bounce animation */}
                 <AnimatedButton
                   style={[
                     styles.dayCircle,
-                    { backgroundColor: theme.surfaceMuted },
+                    {
+                      backgroundColor: isScheduled
+                        ? theme.surfaceMuted
+                        : OFF_DAY_BACKGROUND,
+                    },
+                    !isScheduled && styles.dayOff,
+                    !isScheduled && { borderColor: theme.error },
                     isCompleted && styles.dayCompleted,
                     isCompleted && { backgroundColor: theme.accentStrong },
-                    day.isToday && styles.dayToday,
-                    day.isToday && { borderColor: theme.accentStrong },
+                    day.isToday && isScheduled && styles.dayToday,
+                    day.isToday && isScheduled && { borderColor: theme.accentStrong },
                   ]}
                   onPress={() => onDateToggle && onDateToggle(id, day.date)}
-                  disabled={day.isFuture}
+                  disabled={day.isFuture || !isScheduled}
                   accessibilityRole="checkbox"
                   accessibilityLabel={`${day.dayName} ${day.day}`}
-                  accessibilityState={{ disabled: day.isFuture, checked: isCompleted }}
+                  accessibilityState={{
+                    disabled: day.isFuture || !isScheduled,
+                    checked: isCompleted || isFrozen,
+                  }}
                   hitSlop={6}
                 >
-                  <Text
-                    style={[
-                      styles.dayNumber,
-                      { color: theme.textMuted },
-                      isCompleted && styles.dayNumberCompleted,
-                      isCompleted && { color: theme.textOnAccent },
-                      day.isToday && !isCompleted && styles.dayNumberToday,
-                      day.isToday && !isCompleted && { color: theme.accentStrong },
-                    ]}
-                  >
-                    {day.day}
-                  </Text>
+                  {isFrozen ? (
+                    <StreakFreezeIcon size={FROZEN_DAY_ICON_SIZE} />
+                  ) : (
+                    <Text
+                      style={[
+                        styles.dayNumber,
+                        { color: theme.textMuted },
+                        isCompleted && styles.dayNumberCompleted,
+                        isCompleted && { color: theme.textOnAccent },
+                        !isScheduled && { color: theme.error },
+                        day.isToday && isScheduled && !isCompleted && styles.dayNumberToday,
+                        day.isToday &&
+                          isScheduled &&
+                          !isCompleted &&
+                          !isFrozen && { color: theme.accentStrong },
+                      ]}
+                    >
+                      {day.day}
+                    </Text>
+                  )}
                 </AnimatedButton>
               </View>
             );
@@ -268,6 +336,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
+  },
+  dayOff: {
+    borderWidth: 1,
   },
   dayCompleted: {
   },

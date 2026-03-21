@@ -10,7 +10,14 @@ function IngotItem({ item, onToggle, onDelete, onEdit }) {
     <View
       style={[
         styles.container,
-        { backgroundColor: theme.surface },
+        {
+          backgroundColor: theme.surface,
+          shadowColor: theme.shadow,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.14,
+          shadowRadius: 5,
+          elevation: 3,
+        },
         item.result && styles.completedContainer,
       ]}
     >

@@ -5,6 +5,10 @@ node_modules/
 
 # Expo
 .expo/
+.expo-*/
+.expo-export-check/
+.expo-export-check-android/
+.expo-export-check-android-manual-freeze/
 dist/
 web-build/
 expo-env.d.ts
@@ -48,5 +52,7 @@ ingot.md
 BUILD.md
 Build/
 ref/
+.planing
 .planning/
 .codex/
+.agents/

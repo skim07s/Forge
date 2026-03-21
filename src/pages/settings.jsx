@@ -21,10 +21,12 @@ const truncateText = (value, maxLength) => {
 };
 
 export default function Settings() {
-  const { habits, setHabits } = useHabitStore(
+  const { habits, gems, setHabits, setGems } = useHabitStore(
     useShallow((state) => ({
       habits: state.habits,
+      gems: state.gems,
       setHabits: state.setHabits,
+      setGems: state.setGems,
     }))
   );
   const { ingots, setIngots } = useIngotStore(
@@ -61,7 +63,7 @@ export default function Settings() {
 
     try {
       setBusyAction("export");
-      const payload = buildExportData({ habits, ingots });
+      const payload = buildExportData({ habits, ingots, gems });
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const fileName = `Forge-Export-${timestamp}.json`;
 
@@ -84,7 +86,9 @@ export default function Settings() {
         Alert.alert("Exported", `Saved to:\n${fileUri}`);
       }
 
-      setStatusMessage(`Exported ${payload.habits.length} habits and ${payload.ingots.length} ingots.`);
+      setStatusMessage(
+        `Exported ${payload.habits.length} habits, ${payload.ingots.length} ingots, and ${payload.gems} gems.`
+      );
       void triggerBubblePopHaptic();
     } catch (error) {
       setStatusMessage(`Export failed${error?.message ? `: ${error.message}` : "."}`);
@@ -123,9 +127,10 @@ export default function Settings() {
 
       setHabits(imported.habits);
       setIngots(imported.ingots);
+      setGems(imported.gems);
 
       setStatusMessage(
-        `Imported ${imported.habits.length} habits and ${imported.ingots.length} ingots from ${truncateText(fileAsset.name, MAX_FILE_NAME_LENGTH)}.`
+        `Imported ${imported.habits.length} habits, ${imported.ingots.length} ingots, and ${imported.gems} gems from ${truncateText(fileAsset.name, MAX_FILE_NAME_LENGTH)}.`
       );
       Alert.alert("Import complete", "Your data has been restored from JSON.");
       void triggerBubblePopHaptic();

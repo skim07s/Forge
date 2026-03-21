@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useTheme } from "../context/themeContext";
+import StreakFreezeIcon from "./StreakFreezeIcon";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -24,14 +25,32 @@ const MONTHS = [
   "November",
   "December",
 ];
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
+const FROZEN_DAY_ICON_SIZE = 44;
+const OFF_DAY_BACKGROUND = "rgba(232, 90, 90, 0.18)";
+
+const getWeekdayFromDate = (dateStr) => {
+  if (typeof dateStr !== "string" || !DATE_PATTERN.test(dateStr)) return null;
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day).getDay();
+};
 
 // Number of months to show before current month (reduced for performance)
 const MONTHS_BEFORE = 6;
 
 // Generate calendar days for a specific month
-const generateCalendarDays = (year, month, completedDates = []) => {
+const generateCalendarDays = (
+  year,
+  month,
+  completedDates = [],
+  frozenDates = [],
+  activeWeekdaySet = new Set(ALL_WEEKDAYS)
+) => {
   const completedDateLookup =
     completedDates instanceof Set ? completedDates : new Set(completedDates);
+  const frozenDateLookup =
+    frozenDates instanceof Set ? frozenDates : new Set(frozenDates);
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
   const daysInMonth = lastDay.getDate();
@@ -55,7 +74,10 @@ const generateCalendarDays = (year, month, completedDates = []) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(
       day
     ).padStart(2, "0")}`;
-    const isCompleted = completedDateLookup.has(dateStr);
+    const weekday = getWeekdayFromDate(dateStr);
+    const isScheduled = weekday === null ? true : activeWeekdaySet.has(weekday);
+    const isCompleted = isScheduled && completedDateLookup.has(dateStr);
+    const isFrozen = isScheduled && frozenDateLookup.has(dateStr);
     const isToday = dateStr === todayStr;
     const isPast = dateStr < todayStr;
 
@@ -63,6 +85,8 @@ const generateCalendarDays = (year, month, completedDates = []) => {
       day,
       date: dateStr,
       completed: isCompleted,
+      frozen: isFrozen,
+      scheduled: isScheduled,
       isToday,
       isPast,
       isFuture: !isPast && !isToday,
@@ -95,6 +119,8 @@ const generateMonthIndices = () => {
 
 function Calendar({
   completedDates = [],
+  frozenDates = [],
+  activeWeekdays = ALL_WEEKDAYS,
   onDatePress,
   selectedDate,
   streakCount = 0,
@@ -117,6 +143,16 @@ function Calendar({
     () => new Set(completedDates),
     [completedDates]
   );
+  const frozenDatesSet = useMemo(() => new Set(frozenDates), [frozenDates]);
+  const activeWeekdaySet = useMemo(
+    () =>
+      new Set(
+        Array.isArray(activeWeekdays) && activeWeekdays.length
+          ? activeWeekdays
+          : ALL_WEEKDAYS
+      ),
+    [activeWeekdays]
+  );
 
   const currentMonthData = useMemo(
     () => getMonthData(currentIndex),
@@ -126,13 +162,22 @@ function Calendar({
 
   // Calculate stats for current visible month
   const calendarDays = useMemo(
-    () => generateCalendarDays(currentYear, currentMonth, completedDatesSet),
-    [currentYear, currentMonth, completedDatesSet]
+    () =>
+      generateCalendarDays(
+        currentYear,
+        currentMonth,
+        completedDatesSet,
+        frozenDatesSet,
+        activeWeekdaySet
+      ),
+    [currentYear, currentMonth, completedDatesSet, frozenDatesSet, activeWeekdaySet]
   );
 
-  const monthCompletedCount = calendarDays.filter((d) => d.completed).length;
+  const monthCompletedCount = calendarDays.filter(
+    (d) => d.completed && d.scheduled
+  ).length;
   const monthTotalDays = calendarDays.filter(
-    (d) => d.day !== null && (d.isPast || d.isToday)
+    (d) => d.day !== null && d.scheduled && (d.isPast || d.isToday)
   ).length;
   const monthPercentage =
     monthTotalDays > 0
@@ -263,7 +308,13 @@ function Calendar({
   const renderMonthPage = useCallback(
     ({ item: index }) => {
       const { year, month } = getMonthData(index);
-      const days = generateCalendarDays(year, month, completedDatesSet);
+      const days = generateCalendarDays(
+        year,
+        month,
+        completedDatesSet,
+        frozenDatesSet,
+        activeWeekdaySet
+      );
 
       return (
         <View style={[styles.monthPage, { width: gridWidth }]}>
@@ -279,18 +330,31 @@ function Calendar({
                 onPress={() =>
                   dayItem.day && onDatePress && onDatePress(dayItem.date)
                 }
-                disabled={!dayItem.day || dayItem.isFuture}
+                disabled={!dayItem.day || dayItem.isFuture || !dayItem.scheduled}
               >
                 {dayItem.day !== null && (
                   <View
                     style={[
                       styles.dayCircle,
-                      { backgroundColor: theme.surfaceMuted },
+                      {
+                        backgroundColor: dayItem.scheduled
+                          ? theme.surfaceMuted
+                          : OFF_DAY_BACKGROUND,
+                      },
+                      !dayItem.scheduled && styles.dayOff,
+                      !dayItem.scheduled && { borderColor: theme.error },
                       dayItem.isFuture && styles.dayFuture,
-                      dayItem.isFuture && { backgroundColor: theme.surface },
-                      dayItem.isToday && !dayItem.completed && styles.dayToday,
+                      dayItem.isFuture &&
+                        dayItem.scheduled && { backgroundColor: theme.surface },
                       dayItem.isToday &&
-                        !dayItem.completed && {
+                        dayItem.scheduled &&
+                        !dayItem.completed &&
+                        !dayItem.frozen &&
+                        styles.dayToday,
+                      dayItem.isToday &&
+                        dayItem.scheduled &&
+                        !dayItem.completed &&
+                        !dayItem.frozen && {
                           borderColor: theme.accent,
                           backgroundColor: theme.surfaceElevated,
                         },
@@ -300,22 +364,33 @@ function Calendar({
                       selectedDate === dayItem.date && { borderColor: theme.textPrimary },
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.dayText,
-                        { color: theme.textSecondary },
-                        dayItem.isToday &&
-                          !dayItem.completed &&
-                          styles.dayTextToday,
-                        dayItem.isToday && !dayItem.completed && { color: theme.accentStrong },
-                        dayItem.completed && styles.dayTextCompleted,
-                        dayItem.completed && { color: theme.textOnAccent },
-                        dayItem.isFuture && styles.dayTextFuture,
-                        dayItem.isFuture && { color: theme.textMuted },
-                      ]}
-                    >
-                      {dayItem.day}
-                    </Text>
+                    {dayItem.frozen && !dayItem.completed ? (
+                      <StreakFreezeIcon size={FROZEN_DAY_ICON_SIZE} />
+                    ) : (
+                      <Text
+                        style={[
+                          styles.dayText,
+                          { color: theme.textSecondary },
+                          dayItem.isToday &&
+                            dayItem.scheduled &&
+                            !dayItem.completed &&
+                            !dayItem.frozen &&
+                            styles.dayTextToday,
+                          dayItem.isToday &&
+                            dayItem.scheduled &&
+                            !dayItem.completed &&
+                            !dayItem.frozen && { color: theme.accentStrong },
+                          dayItem.completed && styles.dayTextCompleted,
+                          dayItem.completed && { color: theme.textOnAccent },
+                          !dayItem.scheduled && { color: theme.error },
+                          dayItem.isFuture && styles.dayTextFuture,
+                          dayItem.isFuture &&
+                            dayItem.scheduled && { color: theme.textMuted },
+                        ]}
+                      >
+                        {dayItem.day}
+                      </Text>
+                    )}
                   </View>
                 )}
               </Pressable>
@@ -326,6 +401,8 @@ function Calendar({
     },
     [
       completedDatesSet,
+      frozenDatesSet,
+      activeWeekdaySet,
       onDatePress,
       selectedDate,
       dayCellWidth,
@@ -452,7 +529,7 @@ function Calendar({
         disableIntervalMomentum
         snapToInterval={gridWidth}
         snapToAlignment="start"
-        extraData={completedDates}
+        extraData={{ completedDates, frozenDates, selectedDate, activeWeekdays }}
         style={{ width: gridWidth }}
         windowSize={3}
         maxToRenderPerBatch={2}
@@ -470,7 +547,11 @@ function Calendar({
       <View style={[styles.legend, { borderTopColor: theme.divider }]}>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, styles.legendCompleted, { backgroundColor: theme.accentStrong }]} />
-          <Text style={[styles.legendText, { color: theme.textSecondary }]}>Completed</Text>
+          <Text numberOfLines={1} style={[styles.legendText, { color: theme.textSecondary }]}>Completed</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <StreakFreezeIcon size={12} />
+          <Text numberOfLines={1} style={[styles.legendText, { color: theme.textSecondary }]}>Frozen</Text>
         </View>
         <View style={styles.legendItem}>
           <View
@@ -480,11 +561,21 @@ function Calendar({
               { backgroundColor: theme.surfaceMuted, borderColor: theme.accent },
             ]}
           />
-          <Text style={[styles.legendText, { color: theme.textSecondary }]}>Today</Text>
+          <Text numberOfLines={1} style={[styles.legendText, { color: theme.textSecondary }]}>Today</Text>
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, styles.legendMissed, { backgroundColor: theme.surfaceElevated }]} />
-          <Text style={[styles.legendText, { color: theme.textSecondary }]}>Missed</Text>
+          <Text numberOfLines={1} style={[styles.legendText, { color: theme.textSecondary }]}>Missed</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View
+            style={[
+              styles.legendDot,
+              styles.legendOffDay,
+              { backgroundColor: OFF_DAY_BACKGROUND, borderColor: theme.error },
+            ]}
+          />
+          <Text numberOfLines={1} style={[styles.legendText, { color: theme.textSecondary }]}>Off Day</Text>
         </View>
       </View>
 
@@ -501,6 +592,8 @@ function Calendar({
 function areEqual(prevProps, nextProps) {
   return (
     prevProps.completedDates === nextProps.completedDates &&
+    prevProps.frozenDates === nextProps.frozenDates &&
+    prevProps.activeWeekdays === nextProps.activeWeekdays &&
     prevProps.onDatePress === nextProps.onDatePress &&
     prevProps.selectedDate === nextProps.selectedDate &&
     prevProps.streakCount === nextProps.streakCount &&
@@ -603,6 +696,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  dayOff: {
+    borderWidth: 1,
+  },
   dayCompleted: {
   },
   dayToday: {
@@ -627,15 +723,17 @@ const styles = StyleSheet.create({
   },
   legend: {
     flexDirection: "row",
-    justifyContent: "center",
-    gap: 20,
+    flexWrap: "wrap",
+    justifyContent: "space-between",
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
+    rowGap: 8,
   },
   legendItem: {
     flexDirection: "row",
     alignItems: "center",
+    width: "48%",
     gap: 6,
   },
   legendDot: {
@@ -650,9 +748,13 @@ const styles = StyleSheet.create({
   },
   legendMissed: {
   },
+  legendOffDay: {
+    borderWidth: 1,
+  },
   legendText: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: "Inter_400Regular",
+    flexShrink: 1,
   },
   todayButton: {
     marginTop: 16,

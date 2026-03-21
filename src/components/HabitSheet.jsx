@@ -3,8 +3,10 @@ import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import Calendar from "./Calendar";
 import BottomSheet from "./BottomSheet";
 import { useTheme } from "../context/themeContext";
+import { STREAK_FREEZE_GEM_COST } from "../context/habitStore";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
 
 const parseDateValue = (value) => {
   if (typeof value === "string" && DATE_PATTERN.test(value)) {
@@ -23,6 +25,9 @@ function HabitSheet({
   onDateToggle,
   onEdit,
   onDelete,
+  gems = 0,
+  onManualFreeze,
+  onRemoveFreeze,
   onCalendarGestureStart,
   onCalendarGestureEnd,
 }) {
@@ -35,6 +40,8 @@ function HabitSheet({
     streak = 0,
     startDate = new Date().toISOString(),
     completedDates = [],
+    frozenDates = [],
+    activeWeekdays = ALL_WEEKDAYS,
   } = habit ?? {};
 
   const startDateFormatted = useMemo(
@@ -49,6 +56,33 @@ function HabitSheet({
   );
 
   const totalCompleted = completedDates.length;
+  const canAffordFreeze = gems >= STREAK_FREEZE_GEM_COST;
+  const freezeTargetDate = (() => {
+    const date = new Date();
+    const weekdaySet = new Set(
+      Array.isArray(activeWeekdays) && activeWeekdays.length
+        ? activeWeekdays
+        : ALL_WEEKDAYS
+    );
+    const isTodayScheduled = weekdaySet.has(date.getDay());
+    if (isTodayScheduled) {
+      date.setDate(date.getDate() - 1);
+    }
+
+    for (let i = 0; i < 366; i++) {
+      if (weekdaySet.has(date.getDay())) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      }
+      date.setDate(date.getDate() - 1);
+    }
+
+    return null;
+  })();
+  const hasYesterdayFreeze =
+    !!freezeTargetDate && frozenDates.includes(freezeTargetDate);
 
   const handleDatePress = useCallback((date) => {
     if (habit && onDateToggle) {
@@ -97,6 +131,67 @@ function HabitSheet({
         </Pressable>
       </View>
 
+      <View style={[styles.freezeCard, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+        <View style={styles.freezeTextWrap}>
+          <Text style={[styles.freezeTitle, { color: theme.textPrimary }]}>Streak Freeze</Text>
+          <Text style={[styles.freezeSubtitle, { color: theme.textSecondary }]}>
+            Spend {STREAK_FREEZE_GEM_COST} gems to protect yesterday if you missed it.
+          </Text>
+          <Text style={[styles.freezeBalance, { color: theme.textMuted }]}>
+            Gems available: {gems}
+          </Text>
+        </View>
+        <Pressable
+          style={[
+            styles.freezeButton,
+            {
+              backgroundColor: hasYesterdayFreeze
+                ? theme.surface
+                : canAffordFreeze
+                ? theme.accentStrong
+                : theme.surface,
+              borderColor: hasYesterdayFreeze
+                ? theme.accentStrong
+                : canAffordFreeze
+                ? theme.accentStrong
+                : theme.border,
+            },
+            !hasYesterdayFreeze && !canAffordFreeze && styles.freezeButtonDisabled,
+          ]}
+          onPress={() =>
+            hasYesterdayFreeze ? onRemoveFreeze?.(id) : onManualFreeze?.(id)
+          }
+          disabled={
+            hasYesterdayFreeze
+              ? !onRemoveFreeze
+              : !onManualFreeze || !canAffordFreeze
+          }
+          accessibilityRole="button"
+          accessibilityLabel={
+            hasYesterdayFreeze
+              ? `Remove streak freeze for ${title}`
+              : `Use streak freeze for ${title}`
+          }
+        >
+          <Text
+            style={[
+              styles.freezeButtonText,
+              {
+                color: hasYesterdayFreeze
+                  ? theme.accentStrong
+                  : canAffordFreeze
+                  ? theme.textOnAccent
+                  : theme.textMuted,
+              },
+            ]}
+          >
+            {hasYesterdayFreeze
+              ? `Remove Freeze (+${STREAK_FREEZE_GEM_COST})`
+              : `Freeze (-${STREAK_FREEZE_GEM_COST})`}
+          </Text>
+        </Pressable>
+      </View>
+
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { backgroundColor: theme.surfaceMuted }]}>
@@ -117,6 +212,8 @@ function HabitSheet({
         <View style={styles.section}>
           <Calendar
             completedDates={completedDates}
+            frozenDates={frozenDates}
+            activeWeekdays={activeWeekdays}
             streakCount={streak}
             habitTitle={title}
             onDatePress={handleDatePress}
@@ -138,6 +235,9 @@ function areEqual(prevProps, nextProps) {
     prevProps.onDateToggle === nextProps.onDateToggle &&
     prevProps.onEdit === nextProps.onEdit &&
     prevProps.onDelete === nextProps.onDelete &&
+    prevProps.gems === nextProps.gems &&
+    prevProps.onManualFreeze === nextProps.onManualFreeze &&
+    prevProps.onRemoveFreeze === nextProps.onRemoveFreeze &&
     prevProps.onCalendarGestureStart === nextProps.onCalendarGestureStart &&
     prevProps.onCalendarGestureEnd === nextProps.onCalendarGestureEnd
   );
@@ -189,6 +289,44 @@ const styles = StyleSheet.create({
   deleteButton: {},
   actionButtonText: {
     fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  freezeCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    gap: 10,
+  },
+  freezeTextWrap: {
+    gap: 4,
+  },
+  freezeTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+  },
+  freezeSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: "Inter_400Regular",
+  },
+  freezeBalance: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+  },
+  freezeButton: {
+    minHeight: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 12,
+  },
+  freezeButtonDisabled: {
+    opacity: 0.7,
+  },
+  freezeButtonText: {
+    fontSize: 13,
     fontFamily: "Inter_600SemiBold",
   },
   statsRow: {
