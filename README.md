@@ -1,15 +1,50 @@
-# Forge
+# 🔨 Forge - Habit Tracker
 
-## Features
+Forge helps you build consistency with habits, streaks, and clear daily progress in one focused flow.
 
-- Habit creation, editing, and deletion
-- Habit scheduling by specific weekdays (off-days excluded from streak rules)
-- Daily and calendar-based completion tracking
-- Streak system with freeze support and manual freeze removal
-- Gem economy with weekly streak rewards that double every 7 days
-- Historical streak and freeze-aware reward backfill
-- Interactive habit sheet with month calendar and day-state indicators
-- Theme palette selection including Original Forge and custom palettes
-- Backup flow for export/import of app data
-- Local persistence using Zustand + MMKV
-- Notification reminder support for habits
+## ✨ Features
+
+- **The Anvil Dashboard** for fast daily check-ins
+- **Habit Cards** with quick complete actions and weekly view
+- **Habit Sheet** with detailed progress and calendar history
+- **Calendar Tracking** with clear day states (completed, frozen, today, missed, off-day)
+- **Custom Habit Schedules** so habits can run only on selected weekdays
+- **Theme Palettes** including Original Forge and custom styles
+- **Backup** support to export and import your data
+- **Reminder Notifications** to stay consistent
+
+## 🌟 Exclusive Features
+
+- **Streak Freeze System** to protect streak continuity when you miss a day
+- **Manual Freeze Control** to apply or remove a freeze directly from the habit sheet
+- **Gem Reward Economy** where streak rewards unlock every 7 days and double each week
+- **History-Aware Rewards** that account for previous streak progress and freeze history
+- **Scheduled Off-Day Logic** that excludes off-days from streak penalties
+
+## 📱 How It Works
+
+1. Create a habit.
+2. Pick the weekdays you want that habit to run.
+3. Mark completion daily from the card or the calendar.
+4. Use freeze when needed to protect streak continuity.
+5. Track gems and streak growth over time.
+
+## 🚀 Getting Started
+
+1. Clone this repository.
+2. Install dependencies with `npm install`.
+3. Run the app with `npx expo start`.
+
+## 🤝 Contributing
+
+Contributions are welcome. Open an issue or submit a pull request with your proposed changes.
+
+## 👤 Author
+
+**GopikChenth**
+
+- GitHub: [@GopikChenth](https://github.com/GopikChenth)
+
+---
+
+**Forge** - Build lasting habits, one day at a time. 🔥
