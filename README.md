@@ -35,6 +35,13 @@ Forge helps you build consistency with habits, streaks, and clear daily progress
 2. Install dependencies with `npm install`.
 3. Run the app with `npx expo start`.
 
+## 🛠️ Tech Snapshot
+
+- React Native + Expo
+- Zustand for state management
+- MMKV for on-device persistence
+- Reanimated + Gesture Handler for smooth interactions
+
 ## 🤝 Contributing
 
 Contributions are welcome. Open an issue or submit a pull request with your proposed changes.
