@@ -11,7 +11,7 @@ Forge helps you build consistency with habits, streaks, and clear daily progress
 - **Custom Habit Schedules** so habits can run only on selected weekdays
 - **Theme Palettes** including Original Forge and custom styles
 - **Backup** support to export and import your data
-- **Reminder Notifications** to stay consistent
+- **Reminder Notifications** to stay consistent 
 
 ## 🌟 Exclusive Features
 
